@@ -282,3 +282,6 @@ Code comments are in Turkish; contributions in English or Turkish are welcome.
 [AGPL-3.0](LICENSE). Models, ComfyUI and its plugins have their own licenses. The prebuilt wheel
 archive downloaded during GPU setup (a build cache of audio packages and SageAttention for the L4)
 contains third-party packages under their respective licenses.
+
+Colab Studio is an independent project and is not affiliated with or endorsed by Google.
+Google Colab is a trademark of Google LLC.

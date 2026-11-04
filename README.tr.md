@@ -279,3 +279,6 @@ python3 server/tests/gpu_smoke.py   # gerçek GPU'da her moddan bir iş (kredi h
 [AGPL-3.0](LICENSE). Modellerin, ComfyUI'nin ve eklentilerinin kendi lisansları vardır. GPU
 kurulumunda indirilen hazır wheel arşivi (L4 için ses paketleri ve SageAttention derleme önbelleği)
 üçüncü taraf paketleri kendi lisanslarıyla içerir.
+
+Colab Stüdyo bağımsız bir projedir; Google ile bağlantılı değildir ve Google tarafından
+desteklenmez. Google Colab, Google LLC'nin ticari markasıdır.
