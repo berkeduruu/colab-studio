@@ -1,5 +1,6 @@
 """Stüdyo web servisi: arayüzü sunar, GPU runtime'ını ve üretim işlerini API ile yönetir."""
 import asyncio
+import ipaddress
 import math
 import os
 import sys
@@ -198,6 +199,34 @@ def transcribe_params(body):
     if language not in TRANSCRIBE_LANGUAGES:
         bad(f"geçersiz dil: {language}")
     return {"language": language}
+
+
+def host_allowed(host):
+    """`Host` başlığı bir IP, localhost ya da STUDIO_ALLOWED_HOSTS'taki bir ad mı? DNS rebinding'de
+    tarayıcı saldırganın alan adını gönderir; IP ile ya da izin verilen adla gelen istek güvenlidir."""
+    if "*" in config.ALLOWED_HOSTS:
+        return True
+    name = urlsplit(f"//{host}").hostname or ""
+    name = name.rstrip(".")
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        pass
+    return name == "localhost" or name.endswith(".localhost") or name in config.ALLOWED_HOSTS
+
+
+@web.middleware
+async def host_guard(request, handler):
+    """Bilinmeyen bir alan adıyla gelen her isteği (okuma dahil) reddeder: kötü niyetli bir sayfa kendi
+    adını 127.0.0.1'e çevirse bile stüdyoya erişemez, sohbetleri okuyamaz, GPU'yu açamaz."""
+    if not host_allowed(request.host):
+        name = urlsplit(f"//{request.host}").hostname or request.host
+        raise web.HTTPForbidden(text=(
+            f"Colab Studio: the host name '{name}' is not allowed. If this is your own domain, add it to "
+            f"STUDIO_ALLOWED_HOSTS in .env (e.g. STUDIO_ALLOWED_HOSTS={name}) and restart the studio."
+        ))
+    return await handler(request)
 
 
 @web.middleware
@@ -455,7 +484,7 @@ async def on_shutdown(app):
 
 def create_app():
     studio.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    app = web.Application(client_max_size=50 * 1024 * 1024, middlewares=[csrf_guard])
+    app = web.Application(client_max_size=50 * 1024 * 1024, middlewares=[host_guard, csrf_guard])
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
     app.add_routes([

@@ -356,6 +356,33 @@ async def test_same_origin_and_non_browser_writes_pass_and_reads_are_never_block
     assert r.status == 200
 
 
+@pytest.mark.parametrize("host", ["kotu-site.example", "kotu-site.example:8190", "127.0.0.1.kotu-site.example", "localhost.kotu-site.example"])
+@pytest.mark.parametrize("method,path", [("get", "/api/threads"), ("get", "/"), ("get", "/media/x.png"), ("post", "/api/runtime/start")])
+async def test_unknown_host_names_are_refused_dns_rebinding(client, host, method, path):
+    """DNS rebinding: saldırganın alan adı 127.0.0.1'e çevrilir, tarayıcı isteği "aynı site" sayar
+    (Origin ve Sec-Fetch-Site aynı-köken görünür). Host başlığı tanınmadığı için okuma da yazma da reddedilir."""
+    headers = {"Host": host, "Origin": f"http://{host}", "Sec-Fetch-Site": "same-origin"}
+    r = await getattr(client, method)(path, headers=headers)
+    assert r.status == 403
+    assert "STUDIO_ALLOWED_HOSTS" in await r.text()
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1:8190", "localhost:8190", "LOCALHOST", "studio.localhost", "[::1]:8190", "192.168.1.20:8190", "10.0.0.5"])
+async def test_ip_and_localhost_hosts_are_allowed(client, host):
+    r = await client.get("/api/settings", headers={"Host": host})
+    assert r.status == 200, host
+
+
+async def test_allowed_hosts_setting_lets_a_domain_in(client, monkeypatch):
+    import config
+
+    monkeypatch.setattr(config, "ALLOWED_HOSTS", {"studio.example.com"})
+    assert (await client.get("/api/settings", headers={"Host": "Studio.Example.com"})).status == 200
+    assert (await client.get("/api/settings", headers={"Host": "other.example.com"})).status == 403
+    monkeypatch.setattr(config, "ALLOWED_HOSTS", {"*"})
+    assert (await client.get("/api/settings", headers={"Host": "other.example.com"})).status == 200
+
+
 async def test_presets_listing_without_mode_returns_all(client):
     await client.post("/api/presets", json={"mode": "image", "name": "a", "params": {"steps": 10}})
     await client.post("/api/presets", json={"mode": "video", "name": "b", "params": {"seconds": 5}})

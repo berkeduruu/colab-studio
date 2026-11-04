@@ -45,7 +45,7 @@ function formatJobSummary(job: api.JobRecord): string {
     lines.push(`Stage: ${job.stage}`);
   }
   if (job.error) {
-    lines.push(cancelled ? "Error: İptal edildi (the job was cancelled)" : `Error: ${job.error}`);
+    lines.push(cancelled ? "Error: the job was cancelled" : `Error: ${job.error}`);
   }
   if (job.text) {
     lines.push(`Result Text:\n${job.text}`);
@@ -87,7 +87,7 @@ async function waitForJobText(
     try {
       finalJob = await api.cancelJob(jobId);
       cancelReport = api.isCancelledJob(finalJob)
-        ? "Cancel confirmed: the job is marked as cancelled (İptal edildi)."
+        ? "Cancel confirmed: the job is marked as cancelled."
         : `Cancel requested; job is currently ${String(finalJob.status).toUpperCase()}${finalJob.error ? ` (${finalJob.error})` : ""}.`;
     } catch (cancelError: unknown) {
       cancelReport = `Cancel request failed: ${errorMessage(cancelError)}`;
@@ -566,7 +566,7 @@ export function registerGenerationTools(server: McpServer): void {
 
   server.tool(
     "wait_for_job",
-    "Wait/poll for a job until it reaches a terminal status (done or error). Cancelled jobs end as error with error=\"İptal edildi\". When the timeout expires the job is cancelled.",
+    "Wait/poll for a job until it reaches a terminal status (done or error). Cancelled jobs end with status error and are reported as cancelled. When the timeout expires the job is cancelled.",
     {
       job_id: z.string().min(1).describe("The unique ID of the job"),
       timeout_seconds: z.number().int().min(10).max(7200).default(api.JOB_TIMEOUT_SECONDS).describe("Maximum seconds to wait (the job is cancelled when it expires)"),
@@ -589,7 +589,7 @@ export function registerGenerationTools(server: McpServer): void {
 
   server.tool(
     "cancel_job",
-    "Cancel a queued or currently executing job. The endpoint returns the full job record; a job is cancelled when it ends as error=\"İptal edildi\".",
+    "Cancel a queued or currently executing job. The endpoint returns the full job record; a cancelled job ends with status error and is reported as cancelled.",
     {
       job_id: z.string().min(1).describe("The unique ID of the job to cancel"),
     },
@@ -599,7 +599,7 @@ export function registerGenerationTools(server: McpServer): void {
 
         let text: string;
         if (api.isCancelledJob(job)) {
-          text = `Job ${job_id} was successfully cancelled (status: ${job.status}, error: "${job.error}").`;
+          text = `Job ${job_id} was successfully cancelled (status: ${job.status}).`;
         } else if (job.status === "running") {
           text = `Job ${job_id} cancellation was requested; it is still running and will stop when ComfyUI is interrupted.`;
         } else if (job.status === "done") {

@@ -77,10 +77,10 @@ export const EN: Record<string, string> = {
   "duygu yoğunluğu": "emotion intensity",
   "tempo/CFG": "pace/CFG",
   "sıcaklık": "temperature",
-  "colab CLI'da Google girişi yok: terminalde 'colab usage' çalıştırıp giriş yap, sonra stüdyoyu yeniden başlat":
-    "The colab CLI is not signed in to Google: run 'colab usage' in a terminal, sign in, then restart the studio",
-  "colab CLI'da Google girişi yok: 'docker compose run --rm studio colab usage' ile giriş yap, sonra 'docker compose restart'":
-    "The colab CLI is not signed in to Google: run 'docker compose run --rm studio colab usage', then 'docker compose restart'",
+  "colab CLI'da Google girişi yok: terminalde 'colab usage' çalıştırıp giriş yap, sonra GPU'yu tekrar başlat":
+    "The colab CLI is not signed in to Google: run 'colab usage' in a terminal, sign in, then start the GPU again",
+  "colab CLI'da Google girişi yok: 'docker compose run --rm studio colab usage' ile giriş yap, sonra GPU'yu tekrar başlat":
+    "The colab CLI is not signed in to Google: run 'docker compose run --rm studio colab usage' to sign in, then start the GPU again",
   "GPU ayrılıyor": "Allocating GPU",
   "Bağlanılıyor": "Connecting",
   "Modeller indiriliyor, ComfyUI kuruluyor": "Downloading models, installing ComfyUI",

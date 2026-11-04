@@ -87,6 +87,12 @@ else
   mkdir -p server/web/dist
   curl -fLsS --retry 3 "${url}" | tar -xz -C server/web/dist \
     || die "could not download the UI. Install Node.js 20+ and re-run, or check ${url}"
+  # The prebuilt UI matches the v${VERSION} release. Code pulled from main may have newer UI changes.
+  if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null 2>&1 \
+     && ! git diff --quiet "v${VERSION}" HEAD -- server/web/src server/web/index.html server/web/package.json 2>/dev/null; then
+    note "WARNING: this checkout has UI changes newer than v${VERSION}; the downloaded UI is the v${VERSION} one."
+    note "Install Node.js 20+, then run: rm -rf server/web/dist && ./install.sh"
+  fi
 fi
 
 say "5/6 Settings (.env)"

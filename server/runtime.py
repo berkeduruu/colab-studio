@@ -67,8 +67,8 @@ def preflight():
         return f"colab CLI bulunamadı ({COLAB}): ./install.sh çalıştır ya da .env'de COLAB_BIN ayarla"
     if not COLAB_TOKEN.exists():
         if os.environ.get("STUDIO_IN_DOCKER"):
-            return "colab CLI'da Google girişi yok: 'docker compose run --rm studio colab usage' ile giriş yap, sonra 'docker compose restart'"
-        return "colab CLI'da Google girişi yok: terminalde 'colab usage' çalıştırıp giriş yap, sonra stüdyoyu yeniden başlat"
+            return "colab CLI'da Google girişi yok: 'docker compose run --rm studio colab usage' ile giriş yap, sonra GPU'yu tekrar başlat"
+        return "colab CLI'da Google girişi yok: terminalde 'colab usage' çalıştırıp giriş yap, sonra GPU'yu tekrar başlat"
     for tool in ("ssh", "ssh-keygen", "tar"):
         if shutil.which(tool) is None:
             return f"{tool} bulunamadı: openssh-client ve tar kurulu olmalı"

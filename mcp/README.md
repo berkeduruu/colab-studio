@@ -52,4 +52,4 @@ claude mcp add colab-studio -- ssh -T my-server node /path/to/colab-studio/mcp/d
   `get_settings`, `update_setting`, `get_system_status`, `restart_colab_studio` (only with `install.sh --service`)
 
 Job states are the studio's own: `queued`, `waiting_gpu`, `running`, `done`, `error` (a cancelled
-job ends as `error` with `error = "İptal edildi"`).
+job ends as `error`; the tools report it as cancelled).

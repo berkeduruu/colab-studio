@@ -102,6 +102,7 @@ flowchart LR
 - `curl`, `ssh`, `tar` and `python3` (`sudo apt install curl openssh-client tar python3`).
   Everything else (uv, Python 3.12, the Colab CLI) is installed by `install.sh`.
 - Optional: Node.js 20+ to build the web UI locally (otherwise a prebuilt copy is downloaded).
+  The MCP server needs Node.js 22+.
 - Optional: a free [Hugging Face token](https://huggingface.co/settings/tokens) (read access).
   Models download without one, but anonymous downloads are slower and can be rate-limited.
 
@@ -139,7 +140,9 @@ your compute units, so pick one of these:
 | A server with a domain name | `sudo ./deploy/setup-nginx.sh studio.example.com`: HTTPS (Let's Encrypt) and a password via nginx |
 
 For the nginx option keep `STUDIO_HOST=127.0.0.1`. Any DNS name pointing at the server works,
-including free ones such as `<ip-with-dashes>.sslip.io`.
+including free ones such as `<ip-with-dashes>.sslip.io`. The script also adds the domain to
+`STUDIO_ALLOWED_HOSTS` in `.env`: the studio only answers to IP addresses, `localhost` and the names
+listed there. If you use your own reverse proxy, add its domain there yourself.
 
 ## Docker
 
@@ -149,7 +152,7 @@ docker compose run --rm studio colab usage          # one-time Google sign-in (k
 docker compose up -d                                # http://127.0.0.1:8190/
 ```
 
-The port is published on `127.0.0.1` unless `STUDIO_HOST=0.0.0.0` is set in `.env`. Chats and media
+Needs Docker Compose v2.24 or newer (`docker compose version`). The port is published on `127.0.0.1` unless `STUDIO_HOST=0.0.0.0` is set in `.env`. Chats and media
 live in the `studio-data` volume. A custom `models.toml` can be mounted (see `docker-compose.yml`).
 
 ## Configuration
@@ -161,6 +164,7 @@ All settings live in `.env` (created from [`.env.example`](.env.example)). Resta
 | --- | --- | --- |
 | `STUDIO_HOST` | `127.0.0.1` | Listen address. `0.0.0.0` makes the UI reachable by IP (no password). |
 | `STUDIO_PORT` | `8190` | Web UI port. |
+| `STUDIO_ALLOWED_HOSTS` | empty | Domain names the UI may be opened by, comma-separated. IP addresses and `localhost` always work; other names get 403 (DNS rebinding protection). |
 | `HF_TOKEN` | empty | Hugging Face read token; needed only for gated repos, recommended against rate limits. |
 | `STUDIO_IDLE_MINUTES` | `15` | Release the GPU after this many idle minutes (can also be toggled in the UI). |
 | `STUDIO_DATA` | `~/.local/share/colab-studio` | Chats, media, learned timings and the studio's own SSH key. |
@@ -236,11 +240,15 @@ rm -rf server/web/dist && ./install.sh     # rebuilds the UI, keeps your .env an
 systemctl --user restart colab-studio      # or restart ./run.sh / docker compose up -d --build
 ```
 
+Without Node.js, `install.sh` downloads the prebuilt UI of the release in `VERSION`. If the code you
+pulled has newer UI changes than that release, it says so; install Node.js 20+ to build the matching UI.
+
 ## Troubleshooting
 
 | Symptom | Fix |
 | --- | --- |
-| "colab CLI is not signed in" | Run `colab usage` (Docker: `docker compose run --rm studio colab usage`), sign in, restart. |
+| "colab CLI is not signed in" | Run `colab usage` (Docker: `docker compose run --rm studio colab usage`), sign in, then start the GPU again. No restart needed. |
+| 403 "the host name ... is not allowed" | You opened the studio by a domain name. Add it to `STUDIO_ALLOWED_HOSTS` in `.env` and restart. |
 | GPU start fails at "Allocating GPU" | No L4 available or no compute units left. Check `colab usage`, try again later. |
 | Downloads are slow or fail with 429 | Set `HF_TOKEN` in `.env` and restart. |
 | A job fails after you changed `models.toml` | The new file is probably a different architecture; see [Models](#models). |
@@ -256,7 +264,8 @@ while a GPU was running, it releases that runtime on its next start.
 - Prompts, uploads and results are stored in `STUDIO_DATA` on your machine. Chats older than 30 days
   are deleted automatically.
 - ComfyUI is never exposed to the network; the studio reaches it through its own SSH tunnel.
-- Write requests from other websites are rejected (CSRF protection).
+- Write requests from other websites are rejected (CSRF protection), and so is every request that
+  arrives under an unknown domain name (DNS rebinding protection, see `STUDIO_ALLOWED_HOSTS`).
 
 ## Development
 

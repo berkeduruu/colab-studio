@@ -101,6 +101,7 @@ flowchart LR
 - `curl`, `ssh`, `tar` ve `python3` (`sudo apt install curl openssh-client tar python3`). Gerisini
   (uv, Python 3.12, Colab CLI) `install.sh` kurar.
 - İsteğe bağlı: arayüzü yerelde derlemek için Node.js 20+ (yoksa hazır derlenmiş kopya indirilir).
+  MCP sunucusu için Node.js 22+ gerekir.
 - İsteğe bağlı: ücretsiz bir [Hugging Face token'ı](https://huggingface.co/settings/tokens) (okuma
   yetkisi). Modeller token olmadan da iner ama girişsiz indirme daha yavaş ve hız sınırına takılabilir.
 
@@ -138,7 +139,9 @@ harcayabilir. Bu yüzden şunlardan birini seç:
 | Alan adı olan bir sunucuda | `sudo ./deploy/setup-nginx.sh studio.ornek.com`: nginx ile HTTPS (Let's Encrypt) ve şifre |
 
 nginx seçeneğinde `STUDIO_HOST=127.0.0.1` kalmalı. Sunucuyu gösteren her DNS adı olur;
-`<tireli-ip>.sslip.io` gibi ücretsiz adlar da.
+`<tireli-ip>.sslip.io` gibi ücretsiz adlar da. Betik alan adını `.env`'deki `STUDIO_ALLOWED_HOSTS`'a
+da ekler: stüdyo yalnızca IP adreslerine, `localhost`'a ve orada yazan adlara yanıt verir. Kendi ters
+vekil sunucunu (reverse proxy) kullanıyorsan alan adını oraya kendin ekle.
 
 ## Docker
 
@@ -148,7 +151,7 @@ docker compose run --rm studio colab usage          # tek seferlik Google giriş
 docker compose up -d                                # http://127.0.0.1:8190/
 ```
 
-`.env`'de `STUDIO_HOST=0.0.0.0` yoksa port yalnızca `127.0.0.1`'de yayımlanır. Sohbetler ve medya
+Docker Compose v2.24 ya da üstü gerekir (`docker compose version`). `.env`'de `STUDIO_HOST=0.0.0.0` yoksa port yalnızca `127.0.0.1`'de yayımlanır. Sohbetler ve medya
 `studio-data` volume'unda durur. Özel bir `models.toml` bağlanabilir (bkz. `docker-compose.yml`).
 
 ## Yapılandırma
@@ -160,6 +163,7 @@ yeniden başlat (`systemctl --user restart colab-studio`, `docker compose restar
 | --- | --- | --- |
 | `STUDIO_HOST` | `127.0.0.1` | Dinlenen adres. `0.0.0.0` arayüzü IP ile erişilebilir yapar (şifresiz). |
 | `STUDIO_PORT` | `8190` | Arayüz portu. |
+| `STUDIO_ALLOWED_HOSTS` | boş | Arayüzün açılabileceği alan adları, virgülle ayrılmış. IP adresleri ve `localhost` her zaman çalışır; diğer adlar 403 alır (DNS rebinding koruması). |
 | `HF_TOKEN` | boş | Hugging Face okuma token'ı; yalnızca erişimi kısıtlı (gated) repolar için gerekli, hız sınırına karşı önerilir. |
 | `STUDIO_IDLE_MINUTES` | `15` | GPU bu kadar dakika boşta kalınca kapatılır (arayüzden de açılıp kapatılır). |
 | `STUDIO_DATA` | `~/.local/share/colab-studio` | Sohbetler, medya, öğrenilmiş süreler ve stüdyonun kendi SSH anahtarı. |
@@ -235,11 +239,15 @@ rm -rf server/web/dist && ./install.sh     # arayüzü yeniden derler; .env ve m
 systemctl --user restart colab-studio      # ya da ./run.sh'i yeniden başlat / docker compose up -d --build
 ```
 
+Node.js yoksa `install.sh`, `VERSION`'daki sürümün hazır arayüzünü indirir. Çektiğin kodda o sürümden
+yeni arayüz değişiklikleri varsa bunu söyler; uyumlu arayüzü derlemek için Node.js 20+ kur.
+
 ## Sorun giderme
 
 | Belirti | Çözüm |
 | --- | --- |
-| "colab CLI'da Google girişi yok" | `colab usage` çalıştır (Docker: `docker compose run --rm studio colab usage`), giriş yap, yeniden başlat. |
+| "colab CLI'da Google girişi yok" | `colab usage` çalıştır (Docker: `docker compose run --rm studio colab usage`), giriş yap, sonra GPU'yu tekrar başlat. Stüdyoyu yeniden başlatmak gerekmez. |
+| 403 "the host name ... is not allowed" | Stüdyoyu bir alan adıyla açtın. Adı `.env`'deki `STUDIO_ALLOWED_HOSTS`'a ekle ve yeniden başlat. |
 | GPU açılışı "GPU ayrılıyor"da düşüyor | Boşta L4 yok ya da kredi bitti. `colab usage` ile bak, sonra tekrar dene. |
 | İndirme yavaş ya da 429 hatası | `.env`'e `HF_TOKEN` yaz ve yeniden başlat. |
 | `models.toml`'u değiştirdikten sonra iş hata veriyor | Yeni dosya büyük olasılıkla farklı bir mimaride; bkz. [Modeller](#modeller). |
@@ -255,7 +263,8 @@ Stüdyo yalnızca kendi açtığı Colab oturumunu (`STUDIO_SESSION`) kapatır. 
 - İstemler, yüklemeler ve sonuçlar senin makinende `STUDIO_DATA` altında durur. 30 günden eski
   sohbetler kendiliğinden silinir.
 - ComfyUI ağa hiç açılmaz; stüdyo ona kendi SSH tüneliyle ulaşır.
-- Başka sitelerden gelen yazma istekleri reddedilir (CSRF koruması).
+- Başka sitelerden gelen yazma istekleri (CSRF koruması) ve tanınmayan bir alan adıyla gelen her
+  istek (DNS rebinding koruması, bkz. `STUDIO_ALLOWED_HOSTS`) reddedilir.
 
 ## Geliştirme
 

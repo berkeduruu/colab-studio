@@ -31,6 +31,10 @@ load_dotenv(Path(os.environ.get("STUDIO_ENV_FILE", REPO_DIR / ".env")))
 # network (there is no password then; put nginx + basic auth in front, see deploy/setup-nginx.sh).
 HOST = os.environ.get("STUDIO_HOST", "127.0.0.1")
 PORT = int(os.environ.get("STUDIO_PORT", "8190"))
+# Host names the UI may be opened by, besides IP addresses and localhost (comma-separated, e.g. the
+# nginx domain). Requests for any other name are refused: this blocks DNS rebinding, where a web page
+# points its own domain at 127.0.0.1 to reach the studio. "*" turns the check off.
+ALLOWED_HOSTS = {h.strip().lower().rstrip(".") for h in os.environ.get("STUDIO_ALLOWED_HOSTS", "").split(",") if h.strip()}
 # Database, generated media, SSH key and learned timings.
 DATA_DIR = Path(os.environ.get("STUDIO_DATA", "~/.local/share/colab-studio")).expanduser()
 # The GPU runtime is released after this many idle minutes (it costs Colab compute units).

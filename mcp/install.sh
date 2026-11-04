@@ -4,6 +4,13 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+node_major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
+if [[ ${node_major} -lt 22 ]]; then
+  echo "ERROR: the MCP server needs Node.js 22 or newer (found: $(node --version 2>/dev/null || echo none))." >&2
+  echo "Install it from https://nodejs.org/ or with your package manager, then re-run ./install.sh" >&2
+  exit 1
+fi
+
 echo "=== Installing dependencies for the Colab Studio MCP server (npm ci) ==="
 npm ci --no-audit --no-fund
 

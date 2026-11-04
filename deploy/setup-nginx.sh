@@ -76,4 +76,24 @@ if ! nginx -t; then
 fi
 rm -f "${SITE}.previous"
 systemctl reload nginx
+
+# 4. The studio only answers to IP addresses, localhost and the names in STUDIO_ALLOWED_HOSTS (DNS
+# rebinding protection), so the domain is added there. The studio must be restarted to pick it up.
+if [[ -f .env ]]; then
+  python3 - "${DOMAIN}" <<'PY'
+import re, sys
+domain = sys.argv[1].lower().rstrip(".")
+text = open(".env").read()
+m = re.search(r"^STUDIO_ALLOWED_HOSTS=(.*)$", text, re.M)
+hosts = [h.strip() for h in m.group(1).split(",") if h.strip()] if m else []
+if domain not in hosts:
+    line = "STUDIO_ALLOWED_HOSTS=" + ",".join([*hosts, domain])
+    new, n = re.subn(r"^#?\s*STUDIO_ALLOWED_HOSTS=.*$", lambda _: line, text, count=1, flags=re.M)
+    open(".env", "w").write(new if n else text.rstrip("\n") + "\n" + line + "\n")
+PY
+  echo "Added ${DOMAIN} to STUDIO_ALLOWED_HOSTS in .env."
+else
+  echo "WARNING: no .env found; add STUDIO_ALLOWED_HOSTS=${DOMAIN} to it (run ./install.sh first)."
+fi
 echo "Done: https://${DOMAIN}/"
+echo "Restart the studio so it accepts the new name: systemctl --user restart colab-studio (or restart ./run.sh)"
