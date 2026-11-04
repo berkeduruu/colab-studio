@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="tr" class="no-js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Colab Stüdyo: Google Colab L4 GPU üzerinde kendi barındırdığın yapay zekâ görsel, video, müzik ve ses stüdyosu</title>
+  <meta name="description" content="Açık kaynaklı, kendi makinende çalışan web stüdyosu: metinden görsel, görsel düzenleme, sesli video, müzik, Türkçe seslendirme, ses klonlama, görselden 3D ve yazıya dökme. ComfyUI, Google Colab L4 GPU üzerinde yalnızca kullanırken çalışır.">
+  <meta name="keywords" content="Google Colab, ComfyUI, yapay zekâ görsel üretme, metinden video, ses klonlama, Türkçe seslendirme, yapay zekâ müzik, görselden 3D, Whisper, Qwen-Image, TRELLIS, MCP, Claude Code, L4 GPU">
+  <link rel="canonical" href="https://berkeduruu.github.io/colab-studio/tr/">
+  <link rel="alternate" hreflang="en" href="https://berkeduruu.github.io/colab-studio/">
+  <link rel="alternate" hreflang="tr" href="https://berkeduruu.github.io/colab-studio/tr/">
+  <link rel="alternate" hreflang="x-default" href="https://berkeduruu.github.io/colab-studio/">
+  <meta name="theme-color" content="#110f1a">
+  <link rel="icon" type="image/svg+xml" href="../assets/logo.svg">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Colab Studio">
+  <meta property="og:title" content="Colab Stüdyo: Google Colab L4 üzerinde kendi yapay zekâ medya stüdyon">
+  <meta property="og:description" content="Görsel, sesli video, müzik, seslendirme, ses klonlama ve 3D, kendi makinende çalışan tek bir web arayüzünde. GPU yalnızca çalışırken kiralanır.">
+  <meta property="og:url" content="https://berkeduruu.github.io/colab-studio/tr/">
+  <meta property="og:image" content="https://berkeduruu.github.io/colab-studio/assets/social-preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:locale" content="tr_TR">
+  <meta property="og:locale:alternate" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://berkeduruu.github.io/colab-studio/assets/social-preview.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Geist:wght@400;500&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../site.css">
+  <script>document.documentElement.classList.replace("no-js", "js");</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "name": "Colab Studio",
+        "url": "https://berkeduruu.github.io/colab-studio/",
+        "image": "https://berkeduruu.github.io/colab-studio/assets/social-preview.png",
+        "screenshot": "https://berkeduruu.github.io/colab-studio/screenshots/hero.png",
+        "description": "Self-hosted web studio that generates images, video with sound, music, speech, voice clones and 3D models, and transcribes audio, on a Google Colab L4 GPU rented only while it works.",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "Linux, Windows (WSL2), Docker",
+        "softwareVersion": "0.1.0",
+        "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "inLanguage": ["en", "tr"],
+        "author": { "@type": "Person", "name": "Berke Duru", "url": "https://github.com/berkeduruu" },
+        "sameAs": "https://github.com/berkeduruu/colab-studio"
+      },
+      {
+        "@type": "FAQPage",
+        "inLanguage": "tr",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Ücretsiz Colab sürümü çalışır mı?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Hayır. Ücretsiz sürümde L4 GPU yok. Colab compute unit gerekir: Colab Pro, Pro+ ya da kullandıkça öde."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "T4 ya da A100 kullanabilir miyim?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Hayır. İş akışları, VRAM bütçeleri ve süre tahminleri L4'te ölçüldü; desteklenen tek GPU L4."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Telefonumdan açabilir miyim?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Evet: SSH tüneliyle, güvenilir bir ağda IP ile ya da kendi alan adında nginx, HTTPS ve parolayla. Bunu deploy/setup-nginx.sh kurar."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Sonuçlarım nerede durur?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Kendi makinende. Sonuçlar GPU'dan geri kopyalanır ve GPU kapandıktan sonra da durur. 30 günden eski sohbetler kendiliğinden silinir."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Claude Code kullanabilir mi?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Evet. mcp klasöründe bir MCP sunucusu var; Claude Code ya da Claude Desktop GPU'yu açabilir, medya üretebilir, işleri bekleyip sonuçlara bakabilir."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "Google mı yaptı?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Hayır. Colab Stüdyo, AGPL-3.0 lisanslı bağımsız, açık kaynaklı bir projedir. Google'ın resmi Colab CLI'ını kullanır."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="container">
+      <nav aria-label="Bölümler">
+        <a href="#make">neler üretir</a>
+        <a href="#install">kurulum</a>
+      </nav>
+      <a class="wordmark" href="./" aria-label="Colab Stüdyo ana sayfa"><img src="../assets/logo.svg" width="36" height="36" alt="">colab stüdyo</a>
+      <nav aria-label="Diğer">
+        <a href="https://github.com/berkeduruu/colab-studio">github</a>
+        <a href="../" hreflang="en" lang="en">english</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <h1>colab’da video, müzik ve ses <span class="verb">üret</span></h1>
+        <p class="lead">Google Colab L4’ü yalnızca çalışırken kiralayan, kendi makinende çalışan stüdyo.</p>
+        <div class="actions">
+          <a class="btn btn--primary" href="https://github.com/berkeduruu/colab-studio">github’dan indir</a>
+          <a class="btn btn--secondary" href="#install">kuruluma bak</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section--tight" id="make" aria-labelledby="make-h">
+      <div class="container">
+        <h2 id="make-h" class="visually-hidden">Neler üretir?</h2>
+        <div class="tabs" role="tablist" aria-label="Stüdyo ekranları">
+          <button type="button" role="tab" id="t-image" aria-controls="p-image" aria-selected="true">görsel</button>
+          <button type="button" role="tab" id="t-video" aria-controls="p-video" aria-selected="false" tabindex="-1">video</button>
+          <button type="button" role="tab" id="t-voice" aria-controls="p-voice" aria-selected="false" tabindex="-1">ses</button>
+        </div>
+        <figure class="panel" role="tabpanel" id="p-image" aria-labelledby="t-image">
+          <div class="screen" data-slot="screen-image" data-kind="product" data-alt="Görsel modu, ayarlar paneli açık">
+            <img src="../screenshots/hero.png" width="1440" height="860" alt="Colab Stüdyo görsel modu: istem önerileri, yazma alanı ve görsel ayarları paneli" fetchpriority="high">
+          </div>
+          <figcaption><strong>2K’ya kadar görsel ve düzenleme.</strong> İstem geliştirici, kısa fikrini ayrıntılı bir isteme çevirir.</figcaption>
+        </figure>
+        <figure class="panel" role="tabpanel" id="p-video" aria-labelledby="t-video">
+          <div class="screen" data-slot="screen-video" data-kind="product" data-alt="GPU açılırken bekleyen bir video işi">
+            <img src="../screenshots/startup.png" width="1440" height="860" alt="L4 açılırken bekleyen video işi, canlı indirme ilerlemesi ve kalan süre" loading="lazy">
+          </div>
+          <figcaption><strong>Sesli video.</strong> İlk istem L4’ü açar; iş beklerken indirmeler, kurulum adımları ve kalan süre canlı görünür.</figcaption>
+        </figure>
+        <figure class="panel" role="tabpanel" id="p-voice" aria-labelledby="t-voice">
+          <div class="screen" data-slot="screen-voice" data-kind="product" data-alt="Klonlanmış sesle seslendirme sonuçları">
+            <img src="../screenshots/speech.png" width="1440" height="860" alt="Seslendirme modu: biri klonlanmış sesle iki kayıt ve çalışan bir iş" loading="lazy">
+          </div>
+          <figcaption><strong>Türkçe dahil 23 dilde seslendirme.</strong> Chatterbox ve Qwen3-TTS; kısa bir kayıttan ses klonlama.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="models-h">
+      <div class="container">
+        <div class="head">
+          <h2 id="models-h">hazır hangi modellerle gelir?</h2>
+          <p>Her biri <code>models.toml</code> içinde bir Hugging Face dosyası; değiştir ve yeniden başlat.</p>
+        </div>
+        <table class="models">
+          <thead><tr><th scope="col">mod</th><th scope="col">varsayılan model</th><th scope="col">ne verir</th></tr></thead>
+          <tbody>
+            <tr><td>görsel</td><td>Noct-Q V4 + turbo LoRA</td><td>Metinden görsel ve düzenleme</td></tr>
+            <tr><td>istem</td><td>Qwen3.5 9B istem geliştirici</td><td>Kısa fikir, ayrıntılı istem</td></tr>
+            <tr><td>video</td><td>MiniMax H3</td><td>Diyaloglu, sesli video</td></tr>
+            <tr><td>müzik</td><td>YuE2</td><td>Vokalli şarkı</td></tr>
+            <tr><td>ses</td><td>Chatterbox, Qwen3-TTS</td><td>Seslendirme ve ses klonlama</td></tr>
+            <tr><td>yazıya dök</td><td>Whisper large-v3-turbo</td><td>Ses dosyasından metin</td></tr>
+            <tr><td>3d</td><td>TRELLIS.2</td><td>Tek görselden dokulu GLB</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="cost-h">
+      <div class="container">
+        <div class="head">
+          <h2 id="cost-h">gpu ne zaman para yakar?</h2>
+          <p>Yalnızca ilk isteminle kapanış arasında.</p>
+        </div>
+        <figure class="well blueprint path" aria-label="Compute unit’in ne zaman harcandığını gösteren diyagram: açık bırakılan runtime ile Colab Stüdyo">
+          <div class="lane">
+            <span>açık bırakılan runtime</span>
+            <ol>
+              <li><span class="node">açılış</span></li>
+              <li><span class="node">işler çalışır</span></li>
+              <li><span class="node">boşta</span></li>
+              <li><span class="node">gece boyu boşta</span></li>
+              <li><span class="node">hâlâ harcar</span></li>
+            </ol>
+          </div>
+          <div class="lane lane--studio">
+            <span>colab stüdyo</span>
+            <ol>
+              <li><span class="node node--on">ilk istem</span></li>
+              <li><span class="node">L4 açılır</span></li>
+              <li><span class="node">işler sırayla çalışır</span></li>
+              <li><span class="node">15 dk boşta</span></li>
+              <li><span class="node node--on">L4 kapanır</span></li>
+            </ol>
+          </div>
+          <figcaption><strong>Sonuçlar kapanıştan önce makinene gelir.</strong> Kenar çubuğu kalan compute unit’ini ve ne kadar yeteceğini gösterir.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="needs-h">
+      <div class="container needs">
+        <h2 id="needs-h">neye ihtiyacın var?</h2>
+        <dl>
+          <div><dt>linux ya da wsl2</dt><dd>Ya da Docker. macOS denenmedi.</dd></div>
+          <div><dt>colab compute unit</dt><dd>Pro, Pro+ ya da kullandıkça öde.</dd></div>
+          <div><dt>dört araç</dt><dd><code>curl</code>, <code>ssh</code>, <code>tar</code>, <code>python3</code>.</dd></div>
+          <div><dt>hugging face token’ı</dt><dd>İsteğe bağlı, daha hızlı indirme için.</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="band" aria-labelledby="faq-h">
+      <div class="container faq">
+        <h2 id="faq-h">kurmadan önce</h2>
+        <div class="faq-list">
+          <details>
+            <summary>Ücretsiz Colab sürümü çalışır mı?</summary>
+            <div class="answer"><p>Hayır. Ücretsiz sürümde L4 GPU yok. Colab compute unit gerekir: Colab Pro, Pro+ ya da kullandıkça öde.</p></div>
+          </details>
+          <details>
+            <summary>T4 ya da A100 kullanabilir miyim?</summary>
+            <div class="answer"><p>Hayır. İş akışları, VRAM bütçeleri ve süre tahminleri L4’te ölçüldü; desteklenen tek GPU L4.</p></div>
+          </details>
+          <details>
+            <summary>Telefonumdan açabilir miyim?</summary>
+            <div class="answer"><p>Evet: SSH tüneliyle, güvenilir bir ağda IP ile ya da kendi alan adında nginx, HTTPS ve parolayla. Bunu <code>deploy/setup-nginx.sh</code> kurar.</p></div>
+          </details>
+          <details>
+            <summary>Sonuçlarım nerede durur?</summary>
+            <div class="answer"><p>Kendi makinende. Sonuçlar GPU’dan geri kopyalanır ve GPU kapandıktan sonra da durur. 30 günden eski sohbetler kendiliğinden silinir.</p></div>
+          </details>
+          <details>
+            <summary>Claude Code kullanabilir mi?</summary>
+            <div class="answer"><p>Evet. <a href="https://github.com/berkeduruu/colab-studio/tree/main/mcp">mcp klasöründe</a> bir MCP sunucusu var; Claude Code ya da Claude Desktop GPU’yu açabilir, medya üretebilir, işleri bekleyip sonuçlara bakabilir.</p></div>
+          </details>
+          <details>
+            <summary>Google mı yaptı?</summary>
+            <div class="answer"><p>Hayır. Colab Stüdyo, AGPL-3.0 lisanslı bağımsız, açık kaynaklı bir projedir. Google’ın resmi Colab CLI’ını kullanır.</p></div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="container close" id="install" aria-labelledby="install-h">
+      <div class="close-text">
+        <h2 id="install-h">nasıl kurulur?</h2>
+        <div class="well code">
+          <pre><code><span class="prompt">$ </span>git clone https://github.com/berkeduruu/colab-studio.git
+<span class="prompt">$ </span>cd colab-studio
+<span class="prompt">$ </span>./install.sh &amp;&amp; ./run.sh</code></pre>
+          <button type="button" class="copy" data-copy="git clone https://github.com/berkeduruu/colab-studio.git&#10;cd colab-studio&#10;./install.sh &amp;&amp; ./run.sh">kopyala</button>
+        </div>
+        <p class="install-note">Kurulum seni Colab’a bağlar; sonra <code>127.0.0.1:8190</code> adresini aç ve bir istem gönder. Konteyner mi istiyorsun? <a href="https://github.com/berkeduruu/colab-studio/blob/main/README.tr.md#docker">Docker kurulumuna</a> bak.</p>
+        <div class="actions"><a class="btn btn--primary" href="https://github.com/berkeduruu/colab-studio">github’dan indir</a></div>
+      </div>
+      <div class="phone" data-slot="screen-phone" data-kind="product" data-alt="Telefonda stüdyo, Türkçe arayüz">
+        <img src="../screenshots/mobile-tr.png" width="390" height="844" alt="Telefonda Türkçe arayüzle Colab Stüdyo" loading="lazy">
+      </div>
+    </section>
+  </main>
+
+  <footer class="colophon">
+    <div class="container">
+      <a class="wordmark" href="./" aria-label="Colab Stüdyo ana sayfa"><img src="../assets/logo.svg" width="36" height="36" alt="">colab stüdyo</a>
+      <p><a href="https://github.com/berkeduruu/colab-studio/blob/main/LICENSE">AGPL-3.0</a> lisanslı açık kaynak, <a href="https://github.com/berkeduruu">berkeduruu</a> tarafından. Kod, sorunlar ve sürümler <a href="https://github.com/berkeduruu/colab-studio">GitHub</a>’da; bu sayfanın <a href="../" hreflang="en" lang="en">English</a> sürümü de var. Google ile bağlantılı değildir; Google Colab, Google LLC’nin ticari markasıdır.</p>
+    </div>
+  </footer>
+  <script>
+    (() => {
+      const tabs = [...document.querySelectorAll('[role="tab"]')];
+      const select = (tab, focus) => {
+        for (const t of tabs) {
+          const on = t === tab;
+          t.setAttribute("aria-selected", on);
+          t.tabIndex = on ? 0 : -1;
+          document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+        }
+        if (focus) tab.focus();
+      };
+      tabs.forEach((t, i) => {
+        t.addEventListener("click", () => select(t));
+        t.addEventListener("keydown", (e) => {
+          const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          if (step) { e.preventDefault(); select(tabs[(i + step + tabs.length) % tabs.length], true); }
+        });
+      });
+      if (tabs.length) select(tabs[0]);
+      for (const b of document.querySelectorAll("[data-copy]")) {
+        b.addEventListener("click", async () => {
+          try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = "kopyalandı"; }
+          catch { b.textContent = "seçip kopyala"; }
+          setTimeout(() => { b.textContent = "kopyala"; }, 2000);
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

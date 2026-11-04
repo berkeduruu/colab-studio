@@ -30,7 +30,8 @@
   <a href="#ekran-görüntüleri">Ekran görüntüleri</a> ·
   <a href="#modeller">Modeller</a> ·
   <a href="#docker">Docker</a> ·
-  <a href="README.md">English</a>
+  <a href="README.md">English</a> ·
+  <a href="https://berkeduruu.github.io/colab-studio/tr/">Web sitesi</a>
 </p>
 
 <p align="center">

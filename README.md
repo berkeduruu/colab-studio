@@ -31,7 +31,8 @@
   <a href="#models">Models</a> ·
   <a href="#docker">Docker</a> ·
   <a href="#using-it-from-claude-code-mcp">MCP</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="https://berkeduruu.github.io/colab-studio/">Website</a>
 </p>
 
 <p align="center">

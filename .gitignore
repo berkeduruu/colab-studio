@@ -24,3 +24,6 @@ dist/
 test-results/
 playwright-report/
 .DS_Store
+
+# design tooling output
+.hallmark/
