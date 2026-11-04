@@ -1,32 +1,88 @@
-# Colab Studio
+<p align="center">
+  <img src="docs/assets/logo.svg" width="112" height="112" alt="Colab Studio logo">
+</p>
 
-A self-hosted, chat-style web studio that generates **images, video, music, speech and 3D models**
-on a **Google Colab L4 GPU**, and transcribes audio. The web UI runs on your own computer or server;
-the GPU is rented from Colab only while you use it and is released automatically when idle.
+<h1 align="center">Colab Studio</h1>
 
-[Türkçe README](README.tr.md)
+<p align="center">
+  <b>Self-hosted AI media studio on a Google Colab L4 GPU.</b><br>
+  Images, video with sound, music, speech, voice cloning, image-to-3D and transcription<br>
+  from one chat-style web UI. The GPU is rented only while you use it.
+</p>
 
-| Mode | Default model |
-| --- | --- |
-| Image generation and editing | Noct-Q V4 (Qwen-Image 2.1 fine-tune) + turbo LoRA |
-| Prompt enhancement | Qwen3.5 9B prompt enhancer |
-| Video (with sound) | MiniMax H3 |
-| Music (with vocals) | YuE2 |
-| Speech, voice cloning | Chatterbox (23 languages), Qwen3-TTS |
-| Transcription | Whisper large-v3-turbo |
-| Image to 3D (GLB) | TRELLIS.2 |
+<p align="center">
+  <a href="https://github.com/berkeduruu/colab-studio/releases/latest"><img src="https://img.shields.io/github/v/release/berkeduruu/colab-studio?sort=semver&style=flat-square&color=4f8cff" alt="Latest release"></a>
+  <a href="https://github.com/berkeduruu/colab-studio/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/berkeduruu/colab-studio/test.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/berkeduruu/colab-studio?style=flat-square&color=8b5cf6" alt="License: AGPL-3.0"></a>
+  <img src="https://img.shields.io/badge/GPU-Colab%20L4-F9AB00?style=flat-square&logo=googlecolab&logoColor=white" alt="Google Colab L4">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20WSL2%20%7C%20Docker-555?style=flat-square&logo=linux&logoColor=white" alt="Linux, WSL2, Docker">
+  <br>
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/React-UI-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React">
+  <img src="https://img.shields.io/badge/ComfyUI-workflows-222?style=flat-square" alt="ComfyUI">
+  <img src="https://img.shields.io/badge/MCP-Claude%20Code-D97757?style=flat-square&logo=anthropic&logoColor=white" alt="MCP server for Claude Code">
+  <a href="https://github.com/berkeduruu/colab-studio/stargazers"><img src="https://img.shields.io/github/stars/berkeduruu/colab-studio?style=flat-square&color=f5c518" alt="GitHub stars"></a>
+</p>
 
-Every model can be replaced with a compatible one from Hugging Face by editing a config file
-([Models](#models)). The UI is available in English and Turkish.
+<p align="center">
+  <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#features">Features</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#models">Models</a> ·
+  <a href="#docker">Docker</a> ·
+  <a href="#using-it-from-claude-code-mcp">MCP</a> ·
+  <a href="README.tr.md">Türkçe</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/hero.png" width="900" alt="Colab Studio web UI: image mode with the settings panel open">
+</p>
+
+## Features
+
+| | Mode | What you get | Default model |
+| :---: | --- | --- | --- |
+| 🖼️ | **Image** | Text-to-image and image editing, up to 2K, turbo / quality presets | Noct-Q V4 (Qwen-Image 2.1 fine-tune) + turbo LoRA |
+| ✨ | **Prompt enhancer** | Turns a short idea into a detailed prompt, in any language | Qwen3.5 9B prompt enhancer |
+| 🎬 | **Video** | Text-to-video and image-to-video **with sound** (dialogue, effects, music), 480p / 768p | MiniMax H3 |
+| 🎵 | **Music** | Full songs with vocals from lyrics and a style | YuE2 |
+| 🗣️ | **Speech** | Text-to-speech in 23 languages and **voice cloning** from a short recording | Chatterbox, Qwen3-TTS |
+| 📝 | **Transcription** | Speech-to-text for audio files, many languages | Whisper large-v3-turbo |
+| 🧊 | **Image → 3D** | Textured GLB models from a single image, with an in-browser viewer | TRELLIS.2 |
+
+- **Pay only while you use it.** The first job starts an L4 runtime; after 15 idle minutes it is
+  released. The sidebar shows your compute-unit balance, hourly rate and how long it will last.
+- **Your data stays with you.** Chats and results are copied to your own machine and survive after
+  the GPU is gone. No third-party service besides Colab and Hugging Face.
+- **Swap any model** with a compatible one from Hugging Face by editing one TOML file ([Models](#models)).
+- **Queue, progress and ETAs** for every job, measured on the L4, including GPU start and model downloads.
+- **Bilingual UI** (English, Turkish), works on phones too.
+- **One-command install** (`./install.sh`), **Docker**, optional **nginx + HTTPS + password**.
+- **MCP server** so Claude Code / Claude Desktop can generate media for you.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="40%"><img src="docs/screenshots/startup.png" alt="GPU starting, models downloading, video job waiting"></td>
+    <td width="40%"><img src="docs/screenshots/speech.png" alt="Speech mode with voice cloning results and a running job"></td>
+    <td width="20%"><img src="docs/screenshots/mobile-tr.png" alt="Mobile layout with the Turkish UI"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>GPU start with live download progress</sub></td>
+    <td align="center"><sub>Speech and voice cloning</sub></td>
+    <td align="center"><sub>Mobile, Turkish UI</sub></td>
+  </tr>
+</table>
 
 ## How it works
 
-```
- your browser ──► Colab Studio (this repo, on your PC or server)
-                    │  colab CLI: allocate / release an L4 runtime
-                    │  SSH tunnel: install ComfyUI, send jobs, fetch results
-                    ▼
-                 Google Colab L4 runtime ──► downloads models from Hugging Face
+```mermaid
+flowchart LR
+    B["🌐 Your browser"] --> S["Colab Studio<br/>this repo, on your PC or server"]
+    S -- "colab CLI:<br/>allocate / release" --> L["⚡ Google Colab L4<br/>ComfyUI"]
+    S <-- "SSH tunnel:<br/>jobs and results" --> L
+    L -- "downloads models" --> H[("🤗 Hugging Face")]
 ```
 
 1. The first job (or the **Start L4** button) allocates an L4 runtime with Google's official

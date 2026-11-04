@@ -1,33 +1,87 @@
-# Colab Stüdyo
+<p align="center">
+  <img src="docs/assets/logo.svg" width="112" height="112" alt="Colab Stüdyo logosu">
+</p>
 
-**Görsel, video, müzik, seslendirme ve 3D model** üreten, ses kayıtlarını yazıya döken, sohbet
-tarzında, kendi makinende barındırdığın bir web stüdyosu. Üretim **Google Colab L4 GPU**'da yapılır.
-Arayüz kendi bilgisayarında ya da sunucunda çalışır. GPU yalnızca kullanırken kiralanır, boşta
-kalınca kendiliğinden kapatılır.
+<h1 align="center">Colab Stüdyo</h1>
 
-[English README](README.md)
+<p align="center">
+  <b>Google Colab L4 GPU üzerinde, kendi makinende barındırdığın yapay zekâ medya stüdyosu.</b><br>
+  Görsel, sesli video, müzik, seslendirme, ses klonlama, görselden 3D ve yazıya dökme,<br>
+  hepsi sohbet tarzında tek bir web arayüzünde. GPU yalnızca kullanırken kiralanır.
+</p>
 
-| Mod | Varsayılan model |
-| --- | --- |
-| Görsel üretme ve düzenleme | Noct-Q V4 (Qwen-Image 2.1 ince ayarı) + turbo LoRA |
-| İstem geliştirme | Qwen3.5 9B istem geliştirici |
-| Video (sesli) | MiniMax H3 |
-| Müzik (vokalli) | YuE2 |
-| Seslendirme, ses klonlama | Chatterbox (23 dil, Türkçe dahil), Qwen3-TTS |
-| Yazıya dökme | Whisper large-v3-turbo |
-| Görselden 3D (GLB) | TRELLIS.2 |
+<p align="center">
+  <a href="https://github.com/berkeduruu/colab-studio/releases/latest"><img src="https://img.shields.io/github/v/release/berkeduruu/colab-studio?sort=semver&style=flat-square&color=4f8cff" alt="Latest release"></a>
+  <a href="https://github.com/berkeduruu/colab-studio/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/berkeduruu/colab-studio/test.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/berkeduruu/colab-studio?style=flat-square&color=8b5cf6" alt="License: AGPL-3.0"></a>
+  <img src="https://img.shields.io/badge/GPU-Colab%20L4-F9AB00?style=flat-square&logo=googlecolab&logoColor=white" alt="Google Colab L4">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20WSL2%20%7C%20Docker-555?style=flat-square&logo=linux&logoColor=white" alt="Linux, WSL2, Docker">
+  <br>
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/React-UI-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React">
+  <img src="https://img.shields.io/badge/ComfyUI-workflows-222?style=flat-square" alt="ComfyUI">
+  <img src="https://img.shields.io/badge/MCP-Claude%20Code-D97757?style=flat-square&logo=anthropic&logoColor=white" alt="MCP server for Claude Code">
+  <a href="https://github.com/berkeduruu/colab-studio/stargazers"><img src="https://img.shields.io/github/stars/berkeduruu/colab-studio?style=flat-square&color=f5c518" alt="GitHub stars"></a>
+</p>
 
-Her model, bir yapılandırma dosyasından Hugging Face'teki uyumlu bir modelle değiştirilebilir
-([Modeller](#modeller)). Arayüz İngilizce ve Türkçe; dili sağ üstten seçersin.
+<p align="center">
+  <a href="#hızlı-başlangıç"><b>Hızlı başlangıç</b></a> ·
+  <a href="#özellikler">Özellikler</a> ·
+  <a href="#ekran-görüntüleri">Ekran görüntüleri</a> ·
+  <a href="#modeller">Modeller</a> ·
+  <a href="#docker">Docker</a> ·
+  <a href="README.md">English</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/hero.png" width="900" alt="Colab Stüdyo web arayüzü: görsel modu ve ayarlar paneli">
+</p>
+
+## Özellikler
+
+| | Mod | Ne yapar | Varsayılan model |
+| :---: | --- | --- | --- |
+| 🖼️ | **Görsel** | Metinden görsel ve görsel düzenleme, 2K'ya kadar, turbo / kalite ön ayarları | Noct-Q V4 (Qwen-Image 2.1 ince ayarı) + turbo LoRA |
+| ✨ | **İstem geliştirme** | Kısa bir fikri ayrıntılı bir isteme çevirir, Türkçe yazabilirsin | Qwen3.5 9B istem geliştirici |
+| 🎬 | **Video** | Metinden ve görselden **sesli** video (diyalog, efekt, müzik), 480p / 768p | MiniMax H3 |
+| 🎵 | **Müzik** | Söz ve tarzdan vokalli tam şarkı | YuE2 |
+| 🗣️ | **Seslendirme** | 23 dilde (Türkçe dahil) seslendirme ve kısa bir kayıttan **ses klonlama** | Chatterbox, Qwen3-TTS |
+| 📝 | **Yazıya dökme** | Ses dosyalarını birçok dilde yazıya döker | Whisper large-v3-turbo |
+| 🧊 | **Görselden 3D** | Tek görselden dokulu GLB model, tarayıcıda 3D görüntüleyici | TRELLIS.2 |
+
+- **Yalnızca kullanırken ödersin.** İlk iş L4 runtime'ı açar, 15 dakika boşta kalınca kapatılır.
+  Kenar çubuğu kalan compute unit'ini, saatlik tüketimi ve ne kadar yeteceğini gösterir.
+- **Verilerin sende kalır.** Sohbetler ve sonuçlar kendi makinene kopyalanır, GPU kapandıktan sonra
+  da durur. Colab ve Hugging Face dışında hiçbir servise bağlanmaz.
+- **Her model değiştirilebilir**: tek bir TOML dosyasıyla Hugging Face'teki uyumlu bir modele geç ([Modeller](#modeller)).
+- **Kuyruk, ilerleme ve kalan süre** her iş için; GPU açılışı ve model indirmeleri dahil, L4'te ölçülmüş.
+- **İki dilli arayüz** (İngilizce, Türkçe), telefonda da çalışır.
+- **Tek komutla kurulum** (`./install.sh`), **Docker**, isteğe bağlı **nginx + HTTPS + parola**.
+- **MCP sunucusu**: Claude Code / Claude Desktop senin yerine medya üretebilir.
+
+## Ekran görüntüleri
+
+<table>
+  <tr>
+    <td width="40%"><img src="docs/screenshots/startup.png" alt="GPU açılıyor, modeller iniyor, video işi bekliyor"></td>
+    <td width="40%"><img src="docs/screenshots/speech.png" alt="Seslendirme modu, ses klonlama sonuçları ve çalışan bir iş"></td>
+    <td width="20%"><img src="docs/screenshots/mobile-tr.png" alt="Türkçe arayüz, telefon görünümü"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Canlı indirme ilerlemesiyle GPU açılışı</sub></td>
+    <td align="center"><sub>Seslendirme ve ses klonlama</sub></td>
+    <td align="center"><sub>Telefon, Türkçe arayüz</sub></td>
+  </tr>
+</table>
 
 ## Nasıl çalışır
 
-```
- tarayıcın ──► Colab Stüdyo (bu repo, bilgisayarında ya da sunucunda)
-                 │  colab CLI: L4 runtime'ı açar / kapatır
-                 │  SSH tüneli: ComfyUI'yi kurar, işleri gönderir, sonuçları indirir
-                 ▼
-              Google Colab L4 runtime ──► modelleri Hugging Face'ten indirir
+```mermaid
+flowchart LR
+    B["🌐 Tarayıcın"] --> S["Colab Stüdyo<br/>bu repo, bilgisayarında ya da sunucunda"]
+    S -- "colab CLI:<br/>açar / kapatır" --> L["⚡ Google Colab L4<br/>ComfyUI"]
+    S <-- "SSH tüneli:<br/>işler ve sonuçlar" --> L
+    L -- "modelleri indirir" --> H[("🤗 Hugging Face")]
 ```
 
 1. İlk iş (ya da **L4 başlat** düğmesi) Google'ın resmi [Colab CLI](https://pypi.org/project/google-colab-cli/)'ı

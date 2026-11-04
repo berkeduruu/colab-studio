@@ -7,6 +7,9 @@ declare class Buffer {
   static concat(list: Buffer[]): Buffer;
   readonly length: number;
   writeUInt32LE(value: number, offset: number): number;
+  writeUInt16LE(value: number, offset: number): number;
+  writeInt16LE(value: number, offset: number): number;
+  write(text: string, offset: number): number;
 }
 
 declare const process: { env: Record<string, string | undefined> };

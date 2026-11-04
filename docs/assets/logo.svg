@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Colab Studio">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f8cff"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <rect x="4" y="4" width="120" height="60" rx="28" fill="url(#shine)"/>
+  <!-- GPU chip pins -->
+  <g stroke="#ffffff" stroke-opacity=".45" stroke-width="5" stroke-linecap="round">
+    <path d="M40 22v10M56 22v10M72 22v10M88 22v10M40 96v10M56 96v10M72 96v10M88 96v10M22 40h10M22 56h10M22 72h10M22 88h10M96 40h10M96 56h10M96 72h10M96 88h10"/>
+  </g>
+  <rect x="32" y="32" width="64" height="64" rx="14" fill="#0f1012" fill-opacity=".35" stroke="#ffffff" stroke-opacity=".7" stroke-width="4"/>
+  <!-- sparkles -->
+  <path d="M64 42c2.2 10.6 7.4 15.8 18 18-10.6 2.2-15.8 7.4-18 18-2.2-10.6-7.4-15.8-18-18 10.6-2.2 15.8-7.4 18-18z" fill="#ffffff"/>
+  <path d="M83 70c1 4.6 3.2 6.8 7.8 7.8-4.6 1-6.8 3.2-7.8 7.8-1-4.6-3.2-6.8-7.8-7.8 4.6-1 6.8-3.2 7.8-7.8z" fill="#ffffff" fill-opacity=".85"/>
+</svg>
