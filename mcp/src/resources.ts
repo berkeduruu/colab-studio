@@ -16,7 +16,7 @@ export function registerResources(server: McpServer): void {
           {
             uri: uri.href,
             mimeType: "application/json",
-            text: JSON.stringify(status, null, 2),
+            text: JSON.stringify(status),
           },
         ],
       };
@@ -37,7 +37,7 @@ export function registerResources(server: McpServer): void {
           {
             uri: uri.href,
             mimeType: "application/json",
-            text: JSON.stringify(settings, null, 2),
+            text: JSON.stringify(settings),
           },
         ],
       };
@@ -58,7 +58,7 @@ export function registerResources(server: McpServer): void {
           {
             uri: uri.href,
             mimeType: "application/json",
-            text: JSON.stringify(system, null, 2),
+            text: JSON.stringify(system),
           },
         ],
       };
@@ -79,7 +79,7 @@ export function registerResources(server: McpServer): void {
           {
             uri: uri.href,
             mimeType: "application/json",
-            text: JSON.stringify(media, null, 2),
+            text: JSON.stringify(media),
           },
         ],
       };

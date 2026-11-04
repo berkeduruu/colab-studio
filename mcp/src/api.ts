@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 /**
  * Stüdyonun .env dosyası (repo kökü, bu dosyanın iki üst dizini): port ve veri dizini oradan okunur,
@@ -49,6 +50,14 @@ export const JOB_TIMEOUT_SECONDS = 1800;
 export const CANCELLED_JOB_ERROR = "İptal edildi";
 /** Terminal durumlar: backend bunların dışına asla yazmaz (`queued|waiting_gpu|running` sürer). */
 export const TERMINAL_JOB_STATUSES = ["done", "error"] as const;
+/** Stüdyonun modları (`server/app.py:MODES`). */
+export const STUDIO_MODES = ["image", "video", "music", "speech", "transcribe", "model3d"] as const;
+export type StudioMode = (typeof STUDIO_MODES)[number];
+/**
+ * Yönetici araçları (servisi yeniden başlatma, ayar yazma, thread silme, ham CLI çıktısı) varsayılan
+ * kapalıdır: araç listesini kısaltır ve aynı stüdyoyu kullanan başka bir ajanın işini kesmesini önler.
+ */
+export const ADMIN_TOOLS = /^(1|true|yes|on)$/i.test((process.env.MCP_ADMIN_TOOLS || "").trim());
 
 /** `/api/uploads` sözleşmesi: multipart alanı `file`, en fazla 50 MB (aiohttp client_max_size). */
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -402,7 +411,8 @@ export async function waitForJob(
   jobId: string,
   timeoutSeconds: number = JOB_TIMEOUT_SECONDS,
   pollIntervalSeconds: number = 3,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onPoll?: (job: JobRecord) => void
 ): Promise<JobRecord> {
   const controller = new AbortController();
   let timedOut = false;
@@ -426,6 +436,7 @@ export async function waitForJob(
   try {
     for (;;) {
       lastJob = await getJob(jobId, controller.signal);
+      onPoll?.(lastJob);
       if (isTerminalStatus(lastJob.status)) {
         return lastJob;
       }
@@ -591,6 +602,150 @@ export async function readMediaBase64(
     sizeBytes: stats.size,
     filename: path.relative(root, resolved).split(path.sep).join("/"),
   };
+}
+
+/** Uzantıdan içerik tipine; yüklemede URL'nin adı yoksa ters yönde kullanılır. */
+function extensionForMime(mime: string): string | undefined {
+  const clean = mime.split(";")[0].trim().toLowerCase();
+  return Object.entries(UPLOAD_MIME_TYPES).find(([, value]) => value === clean)?.[0];
+}
+
+/**
+ * `http(s)` adresindeki dosyayı indirir (en fazla 50 MB, akış sırasında da sayılır).
+ * Ajanın dosyayı base64 olarak yazması gerekmesin diye: büyük dosyalar token harcamadan yüklenir.
+ */
+export async function downloadForUpload(
+  sourceUrl: string,
+  filenameHint?: string
+): Promise<{ buffer: Buffer; filename: string }> {
+  let url: URL;
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    throw new Error(`source_url is not a valid URL: ${sourceUrl}`);
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`source_url must be http(s), got ${url.protocol}`);
+  }
+
+  const response = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(120_000) });
+  if (!response.ok || !response.body) {
+    throw new Error(`Download failed (${response.status} ${response.statusText}) for ${url.href}`);
+  }
+  const declared = Number(response.headers.get("content-length") || 0);
+  if (declared > MAX_UPLOAD_BYTES) {
+    throw new Error(`Remote file is ${(declared / (1024 * 1024)).toFixed(1)} MB, the API accepts at most ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB`);
+  }
+
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+    total += chunk.length;
+    if (total > MAX_UPLOAD_BYTES) {
+      throw new Error(`Remote file exceeds ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB`);
+    }
+    chunks.push(Buffer.from(chunk));
+  }
+
+  let filename = (filenameHint || path.basename(decodeURIComponent(url.pathname)) || "").trim();
+  if (!(path.extname(filename).toLowerCase() in UPLOAD_MIME_TYPES)) {
+    const ext = extensionForMime(response.headers.get("content-type") || "");
+    if (ext) {
+      filename = `${path.parse(filename || "upload").name || "upload"}${ext}`;
+    }
+  }
+  return { buffer: Buffer.concat(chunks), filename: filename || "upload" };
+}
+
+let ffmpegAvailable: boolean | null = null;
+
+async function hasFfmpeg(): Promise<boolean> {
+  if (ffmpegAvailable === null) {
+    try {
+      await execFileAsync("ffmpeg", ["-version"], { timeout: 10_000 });
+      await execFileAsync("ffprobe", ["-version"], { timeout: 10_000 });
+      ffmpegAvailable = true;
+    } catch {
+      ffmpegAvailable = false;
+    }
+  }
+  return ffmpegAvailable;
+}
+
+/** Medya dizini içindeki tam yolu çözer; dizin dışına çıkan yol reddedilir. */
+function resolveMediaPath(filenameOrRelative: string): { resolved: string; relative: string } {
+  const normalized = path.normalize(filenameOrRelative).replace(/^(\.\.(\/|\\|$))+/, "");
+  const resolved = path.resolve(path.join(MEDIA_DIR, normalized));
+  const root = path.resolve(MEDIA_DIR);
+  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+    throw new Error(`Path escapes the media directory: ${filenameOrRelative}`);
+  }
+  return { resolved, relative: path.relative(root, resolved).split(path.sep).join("/") };
+}
+
+export const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".mkv"]);
+
+/**
+ * Görseli en uzun kenarı `maxDim` olacak şekilde JPEG önizlemeye, videoyu 2x2 kare tablosuna çevirir
+ * (ffmpeg). Claude görselleri zaten küçültür: tam PNG göndermek yalnızca aktarımı yavaşlatır.
+ * ffmpeg yoksa ya da dönüştürme başarısızsa `null` döner; çağıran taraf özgün dosyaya düşer.
+ */
+export async function readMediaPreview(
+  filenameOrRelative: string,
+  maxDim: number
+): Promise<{ base64: string; mimeType: string; sizeBytes: number; originalBytes: number; filename: string; kind: "image" | "video" } | null> {
+  const { resolved, relative } = resolveMediaPath(filenameOrRelative);
+  const stats = await fs.stat(resolved);
+  const ext = path.extname(resolved).toLowerCase();
+  const isImage = (MEDIA_MIME_TYPES[ext] || "").startsWith("image/");
+  const isVideo = VIDEO_EXTENSIONS.has(ext);
+  if ((!isImage && !isVideo) || !(await hasFfmpeg())) {
+    return null;
+  }
+
+  const fit = `scale='min(${maxDim},iw)':'min(${maxDim},ih)':force_original_aspect_ratio=decrease`;
+  let filter = fit;
+  if (isVideo) {
+    let duration = 0;
+    try {
+      const { stdout } = await execFileAsync(
+        "ffprobe",
+        ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", resolved],
+        { timeout: 30_000 }
+      );
+      duration = parseFloat(stdout.trim());
+    } catch {
+      return null;
+    }
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return null;
+    }
+    // 4 kare, süreye eşit aralıklı; her kare tablonun yarı genişliğine sığar.
+    const half = Math.max(64, Math.round(maxDim / 2));
+    filter = `fps=4/${duration.toFixed(3)},scale='min(${half},iw)':'min(${half},ih)':force_original_aspect_ratio=decrease,tile=2x2`;
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      "ffmpeg",
+      ["-v", "error", "-i", resolved, "-vf", filter, "-frames:v", "1", "-q:v", "4", "-f", "image2pipe", "-vcodec", "mjpeg", "-"],
+      { encoding: "buffer", maxBuffer: 32 * 1024 * 1024, timeout: 60_000 }
+    );
+    const out = stdout as unknown as Buffer;
+    if (!out.length) {
+      return null;
+    }
+    return {
+      base64: out.toString("base64"),
+      mimeType: "image/jpeg",
+      sizeBytes: out.length,
+      originalBytes: stats.size,
+      filename: relative,
+      kind: isVideo ? "video" : "image",
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** `mode` verilirse sorguya eklenir; verilmezse istek modsuz gider (backend tüm modları döner). */
