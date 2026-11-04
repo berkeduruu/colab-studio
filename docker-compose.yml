@@ -1,0 +1,31 @@
+# Colab Studio with Docker Compose. Settings come from .env (copy .env.example to .env).
+#   docker compose run --rm studio colab usage   # one-time Google sign-in (stored in a volume)
+#   docker compose up -d                          # then open http://127.0.0.1:8190/
+services:
+  studio:
+    build: .
+    image: colab-studio
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Fixed inside the container; publish the port below instead.
+      STUDIO_HOST: 0.0.0.0
+      STUDIO_PORT: "8190"
+      STUDIO_DATA: /data
+    ports:
+      # STUDIO_HOST / STUDIO_PORT from .env choose the host address: 127.0.0.1 (this computer only)
+      # or 0.0.0.0 (reachable by IP, no password).
+      - "${STUDIO_HOST:-127.0.0.1}:${STUDIO_PORT:-8190}:8190"
+    volumes:
+      - studio-data:/data
+      - colab-login:/root/.config/colab-cli
+      # Custom model catalog (optional): create models.toml next to this file, then uncomment.
+      # - ./models.toml:/app/models.toml:ro
+    # Releasing the GPU on shutdown can take a few minutes.
+    stop_grace_period: 10m
+
+volumes:
+  studio-data:
+  colab-login:

@@ -1,0 +1,3 @@
+# Servis ve testlerin tek çalışma zamanı bağımlılığı. Sürüm sabit: aiohttp'nin hata/websocket
+# davranışı stüdyonun akışına giriyor (testler de bu sürümle koşar).
+aiohttp==3.14.5

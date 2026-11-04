@@ -1,0 +1,31 @@
+# Push a tag like v0.1.0 (matching VERSION) to publish a release with the prebuilt web UI, which
+# install.sh downloads when Node.js is not installed.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match VERSION
+        run: test "v$(cat VERSION)" = "${GITHUB_REF_NAME}"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build the web UI
+        working-directory: server/web
+        run: |
+          npm ci
+          npm run build
+          tar -C dist -czf ../../web-dist.tar.gz .
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" web-dist.tar.gz --title "${GITHUB_REF_NAME}" --generate-notes

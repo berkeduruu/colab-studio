@@ -1,0 +1,38 @@
+{
+  "name": "colab-studio-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Colab Studio",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "bin": {
+    "colab-studio-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.js",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "colab",
+    "comfyui",
+    "ai-studio"
+  ],
+  "author": "Colab Studio contributors",
+  "license": "AGPL-3.0-only",
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/node": "^26.6.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "zod": "^4.6.7"
+  }
+}

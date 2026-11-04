@@ -1,0 +1,26 @@
+# Your own settings and secrets: never committed.
+.env
+*.env
+!.env.example
+# Your own model catalog (copy of station/models.default.toml).
+/models.toml
+
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.log
+*.part
+*.safetensors
+*.gguf
+*.ckpt
+*.pt
+*.pth
+outputs/
+models/
+node_modules/
+dist/
+test-results/
+playwright-report/
+.DS_Store

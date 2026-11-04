@@ -1,0 +1,22 @@
+# systemd user service, rendered by `./install.sh --service` (@...@ placeholders are filled in).
+# Manage it with: systemctl --user status|restart|stop colab-studio, logs: journalctl --user -u colab-studio
+[Unit]
+Description=Colab Studio
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=@REPO@/server
+Environment=PATH=@PATH@
+ExecStart=@REPO@/.venv/bin/python app.py
+# Only the main process gets SIGTERM first: it stops the queue, then releases the GPU runtime.
+KillMode=mixed
+# Releasing the runtime can take several minutes (ssh exit, colab stop, leftover runtimes).
+TimeoutStopSec=600
+# If shutdown was cut short anyway, try once more to release the studio's runtime (errors ignored).
+ExecStopPost=-@COLAB@ stop -s @SESSION@
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

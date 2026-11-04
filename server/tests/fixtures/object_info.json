@@ -1,0 +1,4285 @@
+{
+ "Apply Whisper": {
+  "input": {
+   "optional": {
+    "language": [
+     [
+      "auto",
+      "Afrikaans",
+      "Albanian",
+      "Amharic",
+      "Arabic",
+      "Armenian",
+      "Assamese",
+      "Azerbaijani",
+      "Bashkir",
+      "Basque",
+      "Belarusian",
+      "Bengali",
+      "Bosnian",
+      "Breton",
+      "Bulgarian",
+      "Cantonese",
+      "Catalan",
+      "Chinese",
+      "Croatian",
+      "Czech",
+      "Danish",
+      "Dutch",
+      "English",
+      "Estonian",
+      "Faroese",
+      "Finnish",
+      "French",
+      "Galician",
+      "Georgian",
+      "German",
+      "Greek",
+      "Gujarati",
+      "Haitian creole",
+      "Hausa",
+      "Hawaiian",
+      "Hebrew",
+      "Hindi",
+      "Hungarian",
+      "Icelandic",
+      "Indonesian",
+      "Italian",
+      "Japanese",
+      "Javanese",
+      "Kannada",
+      "Kazakh",
+      "Khmer",
+      "Korean",
+      "Lao",
+      "Latin",
+      "Latvian",
+      "Lingala",
+      "Lithuanian",
+      "Luxembourgish",
+      "Macedonian",
+      "Malagasy",
+      "Malay",
+      "Malayalam",
+      "Maltese",
+      "Maori",
+      "Marathi",
+      "Mongolian",
+      "Myanmar",
+      "Nepali",
+      "Norwegian",
+      "Nynorsk",
+      "Occitan",
+      "Pashto",
+      "Persian",
+      "Polish",
+      "Portuguese",
+      "Punjabi",
+      "Romanian",
+      "Russian",
+      "Sanskrit",
+      "Serbian",
+      "Shona",
+      "Sindhi",
+      "Sinhala",
+      "Slovak",
+      "Slovenian",
+      "Somali",
+      "Spanish",
+      "Sundanese",
+      "Swahili",
+      "Swedish",
+      "Tagalog",
+      "Tajik",
+      "Tamil",
+      "Tatar",
+      "Telugu",
+      "Thai",
+      "Tibetan",
+      "Turkish",
+      "Turkmen",
+      "Ukrainian",
+      "Urdu",
+      "Uzbek",
+      "Vietnamese",
+      "Welsh",
+      "Yiddish",
+      "Yoruba"
+     ]
+    ],
+    "prompt": [
+     "STRING",
+     {
+      "default": ""
+     }
+    ]
+   },
+   "required": {
+    "audio": [
+     "AUDIO"
+    ],
+    "model": [
+     [
+      "tiny.en",
+      "tiny",
+      "base.en",
+      "base",
+      "small.en",
+      "small",
+      "medium.en",
+      "medium",
+      "large-v1",
+      "large-v2",
+      "large-v3",
+      "large",
+      "large-v3-turbo",
+      "turbo"
+     ]
+    ]
+   }
+  },
+  "output": [
+   "STRING",
+   "whisper_alignment",
+   "whisper_alignment"
+  ]
+ },
+ "ApplyTextureToMesh": {
+  "api_node": false,
+  "category": "3d/texturing",
+  "deprecated": false,
+  "description": "Attaches baked texture IMAGEs to a mesh's UV layout for SaveGLB. Feed the SAME mesh you baked",
+  "dev_only": false,
+  "display_name": "Apply Texture to Mesh",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "optional": {
+    "metallic": [
+     "IMAGE",
+     {}
+    ],
+    "normal_map": [
+     "IMAGE",
+     {}
+    ],
+    "occlusion": [
+     "IMAGE",
+     {}
+    ],
+    "roughness": [
+     "IMAGE",
+     {}
+    ]
+   },
+   "required": {
+    "base_color": [
+     "IMAGE",
+     {}
+    ],
+    "mesh": [
+     "MESH",
+     {}
+    ]
+   }
+  },
+  "input_order": {
+   "optional": [
+    "metallic",
+    "roughness",
+    "occlusion",
+    "normal_map"
+   ],
+   "required": [
+    "mesh",
+    "base_color"
+   ]
+  },
+  "is_input_list": false,
+  "name": "ApplyTextureToMesh",
+  "output": [
+   "MESH"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "mesh"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_mesh_postprocess",
+  "search_aliases": null
+ },
+ "BakeAmbientOcclusion": {
+  "api_node": false,
+  "category": "3d/texturing",
+  "deprecated": false,
+  "description": "Bakes an ambient-occlusion map from a high-poly mesh into a low-poly's UV layout (white = open, dark = crevices). Feed the UV-unwrapped low_poly and the high_poly it was decimated from. Outputs a grayscale image for Apply Texture To Mesh's occlusion input (packed into the ORM map / occlusionTexture).",
+  "dev_only": false,
+  "display_name": "Bake Ambient Occlusion",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "bias": [
+     "FLOAT",
+     {
+      "default": 0.01,
+      "max": 0.2,
+      "min": 0.0001,
+      "step": 0.0005,
+      "tooltip": "Ray origin lift off the surface, as a fraction of the bounding box diagonal. Raise if even surfaces show dark blotches/holes."
+     }
+    ],
+    "high_poly": [
+     "MESH",
+     {}
+    ],
+    "low_poly": [
+     "MESH",
+     {}
+    ],
+    "max_distance": [
+     "FLOAT",
+     {
+      "default": 0.5,
+      "max": 2.0,
+      "min": 0.01,
+      "step": 0.01,
+      "tooltip": "Ray length, as a fraction of the bounding box diagonal. Smaller = tighter, more local occlusion."
+     }
+    ],
+    "resolution": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 8192,
+      "min": 64,
+      "step": 64
+     }
+    ],
+    "samples": [
+     "INT",
+     {
+      "default": 64,
+      "max": 1024,
+      "min": 4,
+      "step": 4,
+      "tooltip": "Rays per texel. More = smoother, slower. Raise if grainy."
+     }
+    ],
+    "strength": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 2.0,
+      "min": 0.0,
+      "step": 0.05,
+      "tooltip": "Scales the occlusion. >1 darkens, <1 lightens."
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "low_poly",
+    "high_poly",
+    "resolution",
+    "samples",
+    "max_distance",
+    "strength",
+    "bias"
+   ]
+  },
+  "is_input_list": false,
+  "name": "BakeAmbientOcclusion",
+  "output": [
+   "IMAGE"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "occlusion"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_mesh_postprocess",
+  "search_aliases": null
+ },
+ "BakeNormalMapFromMesh": {
+  "api_node": false,
+  "category": "3d/texturing",
+  "deprecated": false,
+  "description": "Bakes a tangent-space normal map (glTF/OpenGL +Y) from a high-poly mesh into a low-poly's UV layout, capturing detail lost during decimation. Feed the UV-unwrapped low_poly and the high_poly it was decimated from. Outputs an image for Apply Texture To Mesh's normal_map input.",
+  "dev_only": false,
+  "display_name": "Bake Normal Map from Mesh",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "cage_distance": [
+     "FLOAT",
+     {
+      "default": 0.05,
+      "max": 0.5,
+      "min": 0.001,
+      "step": 0.001,
+      "tooltip": "Surface search band, as a fraction of the bounding box diagonal. Raise for wrong/missing patches under heavy decimation; lower if it grabs across gaps."
+     }
+    ],
+    "high_poly": [
+     "MESH",
+     {}
+    ],
+    "ignore_backfaces": [
+     "BOOLEAN",
+     {
+      "default": true,
+      "tooltip": "Skip high-poly surfaces facing away from the texel, so crevices/enclosed spaces don't grab the opposite wall. Disable only if the high-poly winding is inconsistent."
+     }
+    ],
+    "low_poly": [
+     "MESH",
+     {}
+    ],
+    "resolution": [
+     "INT",
+     {
+      "default": 1024,
+      "display_name": "resolution",
+      "max": 8192,
+      "min": 64,
+      "step": 64
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "low_poly",
+    "high_poly",
+    "resolution",
+    "cage_distance",
+    "ignore_backfaces"
+   ]
+  },
+  "is_input_list": false,
+  "name": "BakeNormalMapFromMesh",
+  "output": [
+   "IMAGE"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "normal_map"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_mesh_postprocess",
+  "search_aliases": null
+ },
+ "BakeTextureFromVoxel": {
+  "api_node": false,
+  "category": "3d/texturing",
+  "deprecated": false,
+  "description": "Bakes PBR textures onto the mesh's existing UV layout (trilinear-sample the sparse voxel volume). Does NOT unwrap — connect a UV unwrap node upstream. Outputs base_color + metallic/roughness grayscale IMAGEs (black if no PBR); feed them to ApplyTextureToMesh (SAME mesh) for SaveGLB.",
+  "dev_only": false,
+  "display_name": "Bake Texture From Voxel",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "optional": {
+    "reference_mesh": [
+     "MESH",
+     {
+      "tooltip": "Optional dense pre-decimation mesh; back-projects each texel onto its true surface before sampling, removing faceted baking on coarse meshes."
+     }
+    ]
+   },
+   "required": {
+    "mesh": [
+     "MESH",
+     {}
+    ],
+    "texture_size": [
+     "INT",
+     {
+      "default": 2048,
+      "display_name": "resolution",
+      "max": 8192,
+      "min": 64,
+      "tooltip": "Square UV atlas resolution."
+     }
+    ],
+    "voxel_colors": [
+     "VOXEL",
+     {}
+    ]
+   }
+  },
+  "input_order": {
+   "optional": [
+    "reference_mesh"
+   ],
+   "required": [
+    "mesh",
+    "voxel_colors",
+    "texture_size"
+   ]
+  },
+  "is_input_list": false,
+  "name": "BakeTextureFromVoxel",
+  "output": [
+   "IMAGE",
+   "IMAGE",
+   "IMAGE"
+  ],
+  "output_is_list": [
+   false,
+   false,
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "base_color",
+   "metallic",
+   "roughness"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null,
+   null,
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_mesh_postprocess",
+  "search_aliases": null
+ },
+ "BasicGuider": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING",
+     {}
+    ],
+    "model": [
+     "MODEL",
+     {}
+    ]
+   }
+  },
+  "output": [
+   "GUIDER"
+  ]
+ },
+ "BasicScheduler": {
+  "input": {
+   "required": {
+    "denoise": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ],
+    "model": [
+     "MODEL",
+     {}
+    ],
+    "scheduler": [
+     "COMBO",
+     {
+      "multiselect": false,
+      "options": [
+       "simple",
+       "sgm_uniform",
+       "karras",
+       "exponential",
+       "ddim_uniform",
+       "beta",
+       "normal",
+       "linear_quadratic",
+       "kl_optimal"
+      ]
+     }
+    ],
+    "steps": [
+     "INT",
+     {
+      "default": 20,
+      "max": 10000,
+      "min": 1
+     }
+    ]
+   }
+  },
+  "output": [
+   "SIGMAS"
+  ]
+ },
+ "BatchImagesNode": {
+  "input": {
+   "required": {
+    "images": [
+     "COMFY_AUTOGROW_V3",
+     {
+      "template": {
+       "input": {
+        "required": {
+         "image": [
+          "IMAGE",
+          {}
+         ]
+        }
+       },
+       "max": 50,
+       "min": 1,
+       "prefix": "image"
+      }
+     }
+    ]
+   }
+  },
+  "output": [
+   "IMAGE"
+  ]
+ },
+ "CFGOverride": {
+  "api_node": false,
+  "category": "model/sampling/guiders",
+  "deprecated": false,
+  "description": "Override cfg to a fixed value over a [start, end] percent (sigma) range. With multiple overrides, the one nearest the sampler wins on overlap.",
+  "dev_only": false,
+  "display_name": "CFG Override",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "cfg": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 100.0,
+      "min": 0.0,
+      "round": 0.01,
+      "step": 0.1
+     }
+    ],
+    "end_percent": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ],
+    "model": [
+     "MODEL",
+     {}
+    ],
+    "start_percent": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.001
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "model",
+    "cfg",
+    "start_percent",
+    "end_percent"
+   ]
+  },
+  "is_input_list": false,
+  "name": "CFGOverride",
+  "output": [
+   "MODEL"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "MODEL"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_custom_sampler",
+  "search_aliases": null
+ },
+ "CLIPLoader": {
+  "input": {
+   "optional": {
+    "device": [
+     [
+      "default",
+      "cpu"
+     ],
+     {
+      "advanced": true
+     }
+    ]
+   },
+   "required": {
+    "clip_name": [
+     [
+      "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors",
+      "qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors",
+      "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "qwen3vl_8b_int8_convrot.safetensors"
+     ]
+    ],
+    "type": [
+     [
+      "stable_diffusion",
+      "stable_cascade",
+      "sd3",
+      "stable_audio",
+      "mochi",
+      "ltxv",
+      "pixart",
+      "cosmos",
+      "lumina2",
+      "wan",
+      "hidream",
+      "chroma",
+      "ace",
+      "omnigen2",
+      "qwen_image",
+      "hunyuan_image",
+      "flux2",
+      "ovis",
+      "longcat_image",
+      "cogvideox",
+      "lens",
+      "pixeldit",
+      "ideogram4",
+      "boogu",
+      "krea2",
+      "joyimage",
+      "mage",
+      "minimax",
+      "yue2",
+      "flux3",
+      "moss_image",
+      "fibo2"
+     ]
+    ]
+   }
+  },
+  "output": [
+   "CLIP"
+  ]
+ },
+ "CLIPVisionLoader": {
+  "category": "model/loaders",
+  "description": "",
+  "display_name": "Load CLIP Vision",
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "clip_name": [
+     []
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "clip_name"
+   ]
+  },
+  "is_input_list": false,
+  "name": "CLIPVisionLoader",
+  "output": [
+   "CLIP_VISION"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_name": [
+   "CLIP_VISION"
+  ],
+  "output_node": false,
+  "python_module": "nodes",
+  "search_aliases": []
+ },
+ "CharacterVoicesNode": {
+  "input": {
+   "optional": {
+    "opt_audio_input": [
+     "AUDIO",
+     {
+      "tooltip": "Direct audio input for voice reference (used when voice_name is 'none' or to override selected voice)"
+     }
+    ]
+   },
+   "required": {
+    "customized": [
+     "BOOLEAN",
+     {
+      "default": false,
+      "tooltip": "Internal UI state: the selected library voice has a temporary text or trim override."
+     }
+    ],
+    "reference_text": [
+     "STRING",
+     {
+      "default": "",
+      "multiline": true,
+      "tooltip": "Create reference text on-the-fly for connected audio input.\n\nENGINE REQUIREMENTS:\n• F5-TTS: REQUIRES reference text (must match spoken audio exactly)\n• Higgs Audio 2: Optional but uses reference text if provided\n• ChatterBox/VibeVoice/IndexTTS: Don't use reference text\n\nSelecting a library voice loads its transcription here automatically. Edits are temporary workflow overrides and never modify the source .txt file."
+     }
+    ],
+    "trim_end": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 100000.0,
+      "min": 0.0,
+      "step": 0.01,
+      "tooltip": "End of the derived reference clip in seconds. 0 means the end of the source audio."
+     }
+    ],
+    "trim_start": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 100000.0,
+      "min": 0.0,
+      "step": 0.01,
+      "tooltip": "Start of the derived reference clip in seconds. The custom timeline controls this value."
+     }
+    ],
+    "voice_name": [
+     [
+      "none",
+      "voices_examples/higgs_audio/belinda.wav",
+      "voices_examples/higgs_audio/broom_salesman.wav",
+      "voices_examples/higgs_audio/chadwick.wav",
+      "voices_examples/Clint_Eastwood CC3 (enhanced2).wav",
+      "voices_examples/David_Attenborough CC3.wav",
+      "voices_examples/higgs_audio/en_man.wav",
+      "voices_examples/higgs_audio/en_woman.wav",
+      "voices_examples/female/female_01.wav",
+      "voices_examples/female/female_02.wav",
+      "voices_examples/higgs_audio/mabel.wav",
+      "voices_examples/male/male_01.wav",
+      "voices_examples/male/male_02.wav",
+      "voices_examples/Morgan_Freeman CC3.wav",
+      "voices_examples/Sophie_Anderson CC3.wav",
+      "voices_examples/higgs_audio/vex.wav",
+      "voices_examples/higgs_audio/zh_man_sichuan.wav"
+     ],
+     {
+      "default": "none",
+      "tooltip": "Use 'none' to rely on direct audio input + input text.\n\nSelect character voice from models/voices/ or voices_examples/ folders.\n\nIMPORTANT: Character Voices node requires a .txt file with the same name as the audio file to recognize it as a character.\n\nFILE REQUIREMENTS:\n• filename.wav + filename.txt (basic setup)\n• filename.wav + filename.reference.txt\n• filename.wav + filename.txt + filename.reference.txt (both files)\n\nPRIORITY SYSTEM - When both .txt and .reference.txt exist:\n• .reference.txt = actual spoken text transcription (used for voice cloning)\n• .txt = audio information/metadata (license, etc.)"
+     }
+    ]
+   }
+  },
+  "output": [
+   "NARRATOR_VOICE",
+   "STRING",
+   "AUDIO"
+  ]
+ },
+ "ChatterBoxOfficial23LangEngineNode": {
+  "input": {
+   "required": {
+    "cfg_weight": [
+     "FLOAT",
+     {
+      "default": 0.5,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.05,
+      "tooltip": "Classifier-Free Guidance weight for ChatterBox. Controls how strongly the model follows the text prompt."
+     }
+    ],
+    "device": [
+     [
+      "auto",
+      "cuda",
+      "xpu",
+      "cpu",
+      "mps"
+     ],
+     {
+      "default": "auto",
+      "tooltip": "Device to run ChatterBox model on:\n• auto: Automatically select best available (MPS on Apple Silicon, CUDA on NVIDIA, XPU on Intel, CPU fallback)\n• cuda: NVIDIA GPU (requires CUDA-capable GPU)\n• xpu: Intel GPU (requires Intel PyTorch XPU)\n• cpu: CPU-only processing (slower)\n• mps: Apple Metal Performance Shaders (Apple Silicon Macs only)"
+     }
+    ],
+    "exaggeration": [
+     "FLOAT",
+     {
+      "default": 0.5,
+      "max": 5.0,
+      "min": 0.0,
+      "step": 0.1,
+      "tooltip": "Emotion exaggeration value passed to the model. V3 uses the native value directly, but current V3 weights show little or no audible response. Legacy v1/v2 keep the suite's historical scaling workaround."
+     }
+    ],
+    "language": [
+     [
+      "Arabic",
+      "Danish",
+      "German",
+      "Greek",
+      "English",
+      "Spanish",
+      "Finnish",
+      "French",
+      "Hebrew",
+      "Hindi",
+      "Italian",
+      "Japanese",
+      "Korean",
+      "Malay",
+      "Dutch",
+      "Norwegian",
+      "Polish",
+      "Portuguese",
+      "Russian",
+      "Swedish",
+      "Swahili",
+      "Turkish",
+      "Chinese",
+      "Vietnamese (Viterbox only)"
+     ],
+     {
+      "default": "English",
+      "tooltip": "ChatterBox language model to use for text-to-speech generation. Local models are preferred over remote downloads."
+     }
+    ],
+    "min_p": [
+     "FLOAT",
+     {
+      "default": 0.05,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01,
+      "tooltip": "Minimum probability threshold for token selection. Lower values allow more diverse tokens."
+     }
+    ],
+    "model_version": [
+     [
+      "v3",
+      "v2",
+      "v1",
+      "Vietnamese (Viterbox)",
+      "Egyptian Arabic (oddadmix)"
+     ],
+     {
+      "default": "v3",
+      "tooltip": "ChatterBox model version:\n• v3: Latest opt-in official multilingual checkpoint; skips the legacy alignment analyzer and trims the final token artifact\n• v2: Upstream default multilingual checkpoint with the suite's v2 special-token support\n• v1: Original 23-language model\n• Vietnamese (Viterbox): Community finetune optimized for Vietnamese\n• Egyptian Arabic (oddadmix): Community finetune optimized for Egyptian Arabic (requires 'Arabic' language selection)"
+     }
+    ],
+    "repetition_penalty": [
+     "FLOAT",
+     {
+      "default": 1.2,
+      "max": 5.0,
+      "min": 1.0,
+      "step": 0.1,
+      "tooltip": "Penalty for repeated tokens. Higher values reduce repetition in generated speech."
+     }
+    ],
+    "temperature": [
+     "FLOAT",
+     {
+      "default": 0.8,
+      "max": 5.0,
+      "min": 0.05,
+      "step": 0.05,
+      "tooltip": "Controls randomness in ChatterBox generation. Higher values = more creative/varied speech, lower values = more consistent speech."
+     }
+    ],
+    "top_p": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01,
+      "tooltip": "Nucleus sampling threshold. Controls the probability mass of tokens to consider."
+     }
+    ]
+   }
+  },
+  "output": [
+   "TTS_ENGINE"
+  ]
+ },
+ "CheckpointLoaderSimple": {
+  "input": {
+   "required": {
+    "ckpt_name": [
+     [
+      "yue2_3b_bf16.safetensors"
+     ],
+     {
+      "tooltip": "The name of the checkpoint (model) to load."
+     }
+    ]
+   }
+  },
+  "output": [
+   "MODEL",
+   "CLIP",
+   "VAE"
+  ]
+ },
+ "ConditioningZeroOut": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING"
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING"
+  ]
+ },
+ "CreateVideo": {
+  "input": {
+   "optional": {
+    "audio": [
+     "AUDIO",
+     {
+      "tooltip": "The audio to add to the video."
+     }
+    ],
+    "bit_depth": [
+     "COMBO",
+     {
+      "default": "auto",
+      "multiselect": false,
+      "options": [
+       "auto",
+       8,
+       10
+      ],
+      "tooltip": "Auto uses 8-bit for sRGB and 10-bit for HDR. Explicit 8-bit and 10-bit choices are independent of colorspace."
+     }
+    ],
+    "codec": [
+     "COMBO",
+     {
+      "advanced": true,
+      "default": "none",
+      "multiselect": false,
+      "options": [
+       "none",
+       "auto",
+       "h264",
+       "av1"
+      ],
+      "tooltip": "Optionally encode the video immediately. None keeps the images in tensor form; Auto uses H.264."
+     }
+    ],
+    "color_space": [
+     "COMBO",
+     {
+      "default": "sRGB",
+      "multiselect": false,
+      "options": [
+       "sRGB",
+       "HDR",
+       "HDR PQ"
+      ],
+      "tooltip": "Colorspace of the input images. HDR selects BT.2020/HLG and HDR PQ selects BT.2020/PQ."
+     }
+    ]
+   },
+   "required": {
+    "fps": [
+     "FLOAT",
+     {
+      "default": 30.0,
+      "max": 120.0,
+      "min": 1.0,
+      "step": 1.0
+     }
+    ],
+    "images": [
+     "IMAGE",
+     {
+      "tooltip": "The images to create a video from."
+     }
+    ]
+   }
+  },
+  "output": [
+   "VIDEO"
+  ]
+ },
+ "DecimateMesh": {
+  "api_node": false,
+  "category": "3d/mesh",
+  "deprecated": false,
+  "description": "Simplifies a mesh to a target face count using QEM, on the active compute device. 'midpoint' is the cumesh-faithful preset (best quality, preserves thin features / hair); 'qem' places vertices at the QEM optimum with line/feature-edge controls. Output stays welded.",
+  "dev_only": false,
+  "display_name": "Decimate Mesh",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "hidden": {
+    "unique_id": [
+     "UNIQUE_ID"
+    ]
+   },
+   "required": {
+    "mesh": [
+     "MESH",
+     {}
+    ],
+    "placement_mode": [
+     "COMFY_DYNAMICCOMBO_V3",
+     {
+      "display_name": "placement_mode",
+      "options": [
+       {
+        "inputs": {
+         "required": {}
+        },
+        "key": "midpoint"
+       },
+       {
+        "inputs": {
+         "required": {
+          "clamp_v_to_edge": [
+           "BOOLEAN",
+           {
+            "default": true,
+            "tooltip": "Project the QEM-optimal position onto the collapsed edge segment."
+           }
+          ],
+          "feature_edge_min_dihedral_deg": [
+           "FLOAT",
+           {
+            "default": 30.0,
+            "max": 180.0,
+            "min": 0.0,
+            "step": 1.0,
+            "tooltip": "Minimum dihedral angle (degree) to count an edge as a feature edge."
+           }
+          ],
+          "feature_edge_quadric_weight": [
+           "FLOAT",
+           {
+            "default": 0.0,
+            "max": 1000.0,
+            "min": 0.0,
+            "step": 1.0,
+            "tooltip": "Extra quadric weight on dihedral feature edges (creases). 0 = off."
+           }
+          ],
+          "line_quadric_weight": [
+           "FLOAT",
+           {
+            "default": 0.0,
+            "max": 100.0,
+            "min": 0.0,
+            "step": 0.1,
+            "tooltip": "Per-edge line-quadric weight; preserves sharp ridges/valleys. 0 = off."
+           }
+          ]
+         }
+        },
+        "key": "qem"
+       }
+      ],
+      "tooltip": "midpoint: cumesh-faithful (recommended). qem: QEM-optimal placement."
+     }
+    ],
+    "target_face_count": [
+     "INT",
+     {
+      "default": 200000,
+      "max": 50000000,
+      "min": 0,
+      "tooltip": "Target max faces. 0 disables."
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "hidden": [
+    "unique_id"
+   ],
+   "required": [
+    "mesh",
+    "target_face_count",
+    "placement_mode"
+   ]
+  },
+  "is_input_list": false,
+  "name": "DecimateMesh",
+  "output": [
+   "MESH"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "mesh"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_mesh_postprocess",
+  "search_aliases": null
+ },
+ "EmptyLatentImage": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1,
+      "tooltip": "The number of latent images in the batch."
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 16384,
+      "min": 16,
+      "step": 8,
+      "tooltip": "The height of the latent images in pixels."
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 16384,
+      "min": 16,
+      "step": 8,
+      "tooltip": "The width of the latent images in pixels."
+     }
+    ]
+   }
+  },
+  "output": [
+   "LATENT"
+  ]
+ },
+ "EmptyTrellis2LatentStructure": {
+  "api_node": false,
+  "category": "model/latent/trellis",
+  "deprecated": false,
+  "description": "",
+  "dev_only": false,
+  "display_name": "Empty Trellis2 Latent Structure",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1,
+      "tooltip": "The number of latent images in the batch."
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "batch_size"
+   ]
+  },
+  "is_input_list": false,
+  "name": "EmptyTrellis2LatentStructure",
+  "output": [
+   "LATENT"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "LATENT"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_trellis2",
+  "search_aliases": null
+ },
+ "EmptyYuE2LatentAudio": {
+  "input": {
+   "required": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4096,
+      "min": 1
+     }
+    ],
+    "seconds": [
+     "FLOAT",
+     {
+      "default": 120.0,
+      "max": 1000.0,
+      "min": 0.04,
+      "step": 0.04
+     }
+    ]
+   }
+  },
+  "output": [
+   "LATENT"
+  ]
+ },
+ "ImageCropToMask": {
+  "api_node": false,
+  "category": "image/transform",
+  "deprecated": false,
+  "description": "",
+  "dev_only": false,
+  "display_name": "Crop Image to Mask",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "background": [
+     "COLOR",
+     {
+      "default": "#000000",
+      "socketless": true,
+      "tooltip": "Background color behind the masked subject."
+     }
+    ],
+    "grow_mask": [
+     "INT",
+     {
+      "default": 0,
+      "max": 32,
+      "min": -32,
+      "step": 1,
+      "tooltip": "Grow or shrink the mask by this many pixels before cropping."
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 4096,
+      "min": 64,
+      "step": 8,
+      "tooltip": "Output height in pixels."
+     }
+    ],
+    "images": [
+     "IMAGE",
+     {}
+    ],
+    "masks": [
+     "MASK",
+     {}
+    ],
+    "pad_factor": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 2.0,
+      "min": 1.0,
+      "step": 0.01,
+      "tooltip": "Extra margin around the mask bounding box as a multiplier."
+     }
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 4096,
+      "min": 64,
+      "step": 8,
+      "tooltip": "Output width in pixels."
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "images",
+    "masks",
+    "width",
+    "height",
+    "pad_factor",
+    "grow_mask",
+    "background"
+   ]
+  },
+  "is_input_list": false,
+  "name": "ImageCropToMask",
+  "output": [
+   "IMAGE"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "images"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_images",
+  "search_aliases": [
+   "crop to mask",
+   "mask crop",
+   "crop mask",
+   "mask crop resize",
+   "crop mask resize",
+   "trellis2",
+   "pixal3d"
+  ]
+ },
+ "KSampler": {
+  "input": {
+   "required": {
+    "cfg": [
+     "FLOAT",
+     {
+      "default": 8.0,
+      "max": 100.0,
+      "min": 0.0,
+      "round": 0.01,
+      "step": 0.1,
+      "tooltip": "The Classifier-Free Guidance scale balances creativity and adherence to the prompt. Higher values result in images more closely matching the prompt however too high values will negatively impact quality."
+     }
+    ],
+    "denoise": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01,
+      "tooltip": "The amount of denoising applied, lower values will maintain the structure of the initial image allowing for image to image sampling."
+     }
+    ],
+    "latent_image": [
+     "LATENT",
+     {
+      "tooltip": "The latent image to denoise."
+     }
+    ],
+    "model": [
+     "MODEL",
+     {
+      "tooltip": "The model used for denoising the input latent."
+     }
+    ],
+    "negative": [
+     "CONDITIONING",
+     {
+      "tooltip": "The conditioning describing the attributes you want to exclude from the image."
+     }
+    ],
+    "positive": [
+     "CONDITIONING",
+     {
+      "tooltip": "The conditioning describing the attributes you want to include in the image."
+     }
+    ],
+    "sampler_name": [
+     [
+      "euler",
+      "euler_cfg_pp",
+      "euler_ancestral",
+      "euler_ancestral_cfg_pp",
+      "heun",
+      "heunpp2",
+      "exp_heun_2_x0",
+      "exp_heun_2_x0_sde",
+      "dpm_2",
+      "dpm_2_ancestral",
+      "lms",
+      "dpm_fast",
+      "dpm_adaptive",
+      "dpmpp_2s_ancestral",
+      "dpmpp_2s_ancestral_cfg_pp",
+      "dpmpp_sde",
+      "dpmpp_sde_gpu",
+      "dpmpp_2m",
+      "dpmpp_2m_cfg_pp",
+      "dpmpp_2m_sde",
+      "dpmpp_2m_sde_gpu",
+      "dpmpp_2m_sde_heun",
+      "dpmpp_2m_sde_heun_gpu",
+      "dpmpp_3m_sde",
+      "dpmpp_3m_sde_gpu",
+      "ddpm",
+      "lcm",
+      "ipndm",
+      "ipndm_v",
+      "deis",
+      "cfgpp_ud10_ab",
+      "res_multistep",
+      "res_multistep_cfg_pp",
+      "res_multistep_ancestral",
+      "res_multistep_ancestral_cfg_pp",
+      "gradient_estimation",
+      "gradient_estimation_cfg_pp",
+      "er_sde",
+      "seeds_2",
+      "seeds_3",
+      "sa_solver",
+      "sa_solver_pece",
+      "ddim",
+      "uni_pc",
+      "uni_pc_bh2"
+     ],
+     {
+      "tooltip": "The algorithm used when sampling, this can affect the quality, speed, and style of the generated output."
+     }
+    ],
+    "scheduler": [
+     [
+      "simple",
+      "sgm_uniform",
+      "karras",
+      "exponential",
+      "ddim_uniform",
+      "beta",
+      "normal",
+      "linear_quadratic",
+      "kl_optimal"
+     ],
+     {
+      "tooltip": "The scheduler controls how noise is gradually removed to form the image."
+     }
+    ],
+    "seed": [
+     "INT",
+     {
+      "control_after_generate": true,
+      "default": 0,
+      "max": 18446744073709551615,
+      "min": 0,
+      "tooltip": "The random seed used for creating the noise."
+     }
+    ],
+    "steps": [
+     "INT",
+     {
+      "default": 20,
+      "max": 10000,
+      "min": 1,
+      "tooltip": "The number of steps used in the denoising process."
+     }
+    ]
+   }
+  },
+  "output": [
+   "LATENT"
+  ]
+ },
+ "KSamplerSelect": {
+  "input": {
+   "required": {
+    "sampler_name": [
+     "COMBO",
+     {
+      "multiselect": false,
+      "options": [
+       "euler",
+       "euler_cfg_pp",
+       "euler_ancestral",
+       "euler_ancestral_cfg_pp",
+       "heun",
+       "heunpp2",
+       "exp_heun_2_x0",
+       "exp_heun_2_x0_sde",
+       "dpm_2",
+       "dpm_2_ancestral",
+       "lms",
+       "dpm_fast",
+       "dpm_adaptive",
+       "dpmpp_2s_ancestral",
+       "dpmpp_2s_ancestral_cfg_pp",
+       "dpmpp_sde",
+       "dpmpp_sde_gpu",
+       "dpmpp_2m",
+       "dpmpp_2m_cfg_pp",
+       "dpmpp_2m_sde",
+       "dpmpp_2m_sde_gpu",
+       "dpmpp_2m_sde_heun",
+       "dpmpp_2m_sde_heun_gpu",
+       "dpmpp_3m_sde",
+       "dpmpp_3m_sde_gpu",
+       "ddpm",
+       "lcm",
+       "ipndm",
+       "ipndm_v",
+       "deis",
+       "cfgpp_ud10_ab",
+       "res_multistep",
+       "res_multistep_cfg_pp",
+       "res_multistep_ancestral",
+       "res_multistep_ancestral_cfg_pp",
+       "gradient_estimation",
+       "gradient_estimation_cfg_pp",
+       "er_sde",
+       "seeds_2",
+       "seeds_3",
+       "sa_solver",
+       "sa_solver_pece",
+       "ddim",
+       "uni_pc",
+       "uni_pc_bh2"
+      ]
+     }
+    ]
+   }
+  },
+  "output": [
+   "SAMPLER"
+  ]
+ },
+ "LoadAudio": {
+  "input": {
+   "required": {
+    "audio": [
+     "COMBO",
+     {
+      "audio_upload": true,
+      "multiselect": false,
+      "options": []
+     }
+    ]
+   }
+  },
+  "output": [
+   "AUDIO"
+  ]
+ },
+ "LoadBackgroundRemovalModel": {
+  "api_node": false,
+  "category": "model/loaders",
+  "deprecated": false,
+  "description": "",
+  "dev_only": false,
+  "display_name": "Load Background Removal Model",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "bg_removal_name": [
+     "COMBO",
+     {
+      "multiselect": false,
+      "options": [],
+      "tooltip": "The model used to remove backgrounds from images"
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "bg_removal_name"
+   ]
+  },
+  "is_input_list": false,
+  "name": "LoadBackgroundRemovalModel",
+  "output": [
+   "BACKGROUND_REMOVAL"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "bg_model"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_bg_removal",
+  "search_aliases": null
+ },
+ "LoadImage": {
+  "input": {
+   "required": {
+    "image": [
+     [
+      "example.png"
+     ],
+     {
+      "image_upload": true
+     }
+    ]
+   }
+  },
+  "output": [
+   "IMAGE",
+   "MASK"
+  ]
+ },
+ "LoraLoaderModelOnly": {
+  "input": {
+   "required": {
+    "lora_name": [
+     [
+      "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
+     ]
+    ],
+    "model": [
+     "MODEL"
+    ],
+    "strength_model": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 100.0,
+      "min": -100.0,
+      "step": 0.01
+     }
+    ]
+   }
+  },
+  "output": [
+   "MODEL"
+  ]
+ },
+ "MeshSmoothNormals": {
+  "api_node": false,
+  "category": "3d/mesh",
+  "deprecated": false,
+  "description": "Compute smooth per-vertex normals and attach them to the mesh. Meshes without normals are shaded flat (per-face) by glTF viewers; this makes them shade smoothly. With crease_angle below 180, edges sharper than the threshold are kept hard by splitting vertices along them.",
+  "dev_only": false,
+  "display_name": "Smooth Mesh Normals",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "crease_angle": [
+     "FLOAT",
+     {
+      "default": 180.0,
+      "max": 180.0,
+      "min": 0.0,
+      "step": 1.0,
+      "tooltip": "Edges whose dihedral angle exceeds this value (degrees) stay hard (vertices are split). 180 = fully smooth; lower preserves sharp edges (e.g. ~30-60 for hard-surface)."
+     }
+    ],
+    "mesh": [
+     "MESH",
+     {}
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "mesh",
+    "crease_angle"
+   ]
+  },
+  "is_input_list": false,
+  "name": "MeshSmoothNormals",
+  "output": [
+   "MESH"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "mesh"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_mesh_postprocess",
+  "search_aliases": null
+ },
+ "MiniMaxH3ImageToVideo": {
+  "input": {
+   "optional": {
+    "first_frame": [
+     "IMAGE",
+     {}
+    ],
+    "last_frame": [
+     "IMAGE",
+     {}
+    ]
+   },
+   "required": {
+    "clip": [
+     "CLIP",
+     {}
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 768,
+      "max": 16384,
+      "min": 32,
+      "step": 32
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 124,
+      "max": 3600,
+      "min": 5,
+      "step": 17,
+      "tooltip": "Frame count at 24 fps, snapped up to the model's 17k+5 grid (124 = ~5s; trained range is ~124-362, longer is untested)"
+     }
+    ],
+    "prompt": [
+     "STRING",
+     {
+      "dynamicPrompts": true,
+      "multiline": true
+     }
+    ],
+    "vae": [
+     "VAE",
+     {}
+    ],
+    "width": [
+     "INT",
+     {
+      "default": 1344,
+      "max": 16384,
+      "min": 32,
+      "step": 32
+     }
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "ModelSamplingSD3": {
+  "category": "model/patch/stable diffusion",
+  "description": "",
+  "display_name": "ModelSamplingSD3",
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "shift": [
+     "FLOAT",
+     {
+      "default": 3.0,
+      "max": 100.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "model",
+    "shift"
+   ]
+  },
+  "is_input_list": false,
+  "name": "ModelSamplingSD3",
+  "output": [
+   "MODEL"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_name": [
+   "MODEL"
+  ],
+  "output_node": false,
+  "python_module": "comfy_extras.nodes_model_advanced",
+  "search_aliases": []
+ },
+ "PaintMesh": {
+  "api_node": false,
+  "category": "3d/mesh",
+  "deprecated": false,
+  "description": "Paints each mesh vertex with its nearest voxel color from the input voxel field.",
+  "dev_only": false,
+  "display_name": "Paint Mesh",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "mesh": [
+     "MESH",
+     {}
+    ],
+    "voxel_colors": [
+     "VOXEL",
+     {}
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "mesh",
+    "voxel_colors"
+   ]
+  },
+  "is_input_list": false,
+  "name": "PaintMesh",
+  "output": [
+   "MESH"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "mesh"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_mesh_postprocess",
+  "search_aliases": null
+ },
+ "PreviewAny": {
+  "input": {
+   "required": {
+    "source": [
+     "*",
+     {}
+    ]
+   }
+  },
+  "output": [
+   "STRING"
+  ]
+ },
+ "Qwen3TTSEngineNode": {
+  "input": {
+   "optional": {
+    "asr_translate_instruction_override": [
+     "STRING",
+     {
+      "default": "Translate the speech from {source_language} into {target_language} text. Return only the translated text.",
+      "multiline": true,
+      "tooltip": "Qwen ASR-only experimental translation instruction template for ✏️ ASR Transcribe when task=translate.\n\nThis field shows the actual default instruction used by this integration. Edit it if you want to experiment.\n\nAvailable placeholders:\n• {source_language}: Replaced with the unified ASR source language, or 'the spoken source language' when ASR language is Auto\n• {target_language}: Replaced with this engine node's ASR translation target\n\nImportant:\n• This does NOT affect Qwen TTS generation or the TTS 'instruct' field\n• Qwen translation here is prompt-driven through the ASR wrapper context\n• Results can vary a lot by language pair, and some pairs may not behave reliably at all\n• Weak or malformed custom instructions can produce worse translations or unexpected output"
+     }
+    ],
+    "asr_translate_target_language": [
+     [
+      "English",
+      "Chinese",
+      "Cantonese",
+      "Arabic",
+      "German",
+      "French",
+      "Spanish",
+      "Portuguese",
+      "Indonesian",
+      "Italian",
+      "Korean",
+      "Russian",
+      "Thai",
+      "Vietnamese",
+      "Japanese",
+      "Turkish",
+      "Hindi",
+      "Malay",
+      "Dutch",
+      "Swedish",
+      "Danish",
+      "Finnish",
+      "Polish",
+      "Czech",
+      "Filipino",
+      "Persian",
+      "Greek",
+      "Romanian",
+      "Hungarian",
+      "Macedonian"
+     ],
+     {
+      "default": "English",
+      "tooltip": "Experimental ASR translation target for ✏️ ASR Transcribe when task=translate.\n\nThis is ASR-only and does NOT affect Qwen TTS generation language.\n\nImportant:\n• Qwen translation in this integration is prompt-driven through the ASR wrapper, not a dedicated native target-language API\n• Translation quality currently depends heavily on language pair and backend behavior\n• English is the safest default\n• Non-English targets should be treated as experimental until you validate them on real audio"
+     }
+    ],
+    "asr_use_forced_aligner": [
+     "BOOLEAN",
+     {
+      "default": true,
+      "tooltip": "Enable Qwen3 forced aligner (required for word timestamps + accurate SRT).\nTurn OFF to save VRAM and skip downloading the extra aligner model if you only need text (no timestamps)."
+     }
+    ],
+    "attn_implementation": [
+     [
+      "auto",
+      "sage_attn",
+      "flash_attention_2",
+      "sdpa",
+      "eager"
+     ],
+     {
+      "default": "auto",
+      "tooltip": "Attention mechanism:\n• auto: Best available (priority: sage_attn > flash_attention_2 > sdpa > eager)\n• sage_attn: Fastest (requires sageattention package)\n• flash_attention_2: Very fast (requires flash-attn installed)\n• sdpa: Good balance (PyTorch native)\n• eager: Slowest, most compatible"
+     }
+    ],
+    "compile_mode": [
+     [
+      "default",
+      "reduce-overhead",
+      "max-autotune"
+     ],
+     {
+      "default": "default",
+      "tooltip": "torch.compile mode (if use_torch_compile enabled):\n• default: RECOMMENDED - Standard torch.compile, ~1.7x speedup, works on Windows\n• reduce-overhead: Auto CUDA graphs, ~2-3x speedup, LINUX ONLY (fails on Windows)\n• max-autotune: Best optimization, longest compile, LINUX ONLY\n⚠️ Windows: Only 'default' works - reduce-overhead/max-autotune fail with cudaMallocAsync error\n⚠️ Model must be reloaded to test different modes (cache reuse otherwise)"
+     }
+    ],
+    "dtype": [
+     [
+      "auto",
+      "bfloat16",
+      "float16",
+      "float32"
+     ],
+     {
+      "default": "auto",
+      "tooltip": "Model precision:\n• auto: Selects bfloat16 if GPU supports it (SM 8.0+), else float16\n• bfloat16: Best quality, stable (RTX 30xx+, A100+)\n• float16: Good quality, wider compatibility\n• float32: Maximum precision, 2x VRAM"
+     }
+    ],
+    "runtime_mode": [
+     [
+      "Main Environment",
+      "⚠️ Shared Runtime"
+     ],
+     {
+      "default": "⚠️ Shared Runtime",
+      "tooltip": "IMPORTANT: Qwen3-TTS is fragile on Transformers 5 in the main environment.\n\nRuntime Isolation:\n• Main Environment: Use the main ComfyUI Python environment\n• Shared Runtime: Use the shared secondary legacy runtime already used by compatible engines\n\nWhy this matters:\n• The main ComfyUI env is on Transformers 5\n• Qwen3-TTS is more stable on the legacy Transformers 4 stack\n• Runtime isolation keeps Qwen3-TTS working without downgrading the whole app\n\n⚠️ Shared Runtime reuses heavy base packages such as PyTorch and adds its pinned legacy dependencies during suite installation.\n⚠️ If it is missing, enable automatic shared runtime installation in Settings and repair/reinstall the suite through Manager."
+     }
+    ],
+    "use_cuda_graphs": [
+     "BOOLEAN",
+     {
+      "default": false,
+      "tooltip": "Enable manual CUDA graph capture:\n• False: RECOMMENDED (reduce-overhead mode already has auto CUDA graphs)\n• True: Manual capture - minimal gain (~0.1 it/s), only works with mode='default'\nNote: reduce-overhead/max-autotune include CUDA graphs automatically"
+     }
+    ],
+    "use_torch_compile": [
+     "BOOLEAN",
+     {
+      "default": false,
+      "tooltip": "Enable torch.compile for decoder (~1.5-2x speedup):\n• False: Standard inference (RECOMMENDED - works with all PyTorch versions)\n• True: Compiled decoder (REQUIRES PyTorch 2.10+ and triton-windows 3.6+)\n⚠️ REQUIREMENTS: PyTorch 2.10.0+cu130, triton-windows 3.6.0+, and Visual Studio C++ Build Tools on Windows\n⚠️ Shared Runtime will try to detect the toolchain automatically, but it still must be installed\n⚠️ See docs/qwen3_tts_optimizations.md for installation\nFirst generation slower due to compilation, then ~1.5-2x faster"
+     }
+    ],
+    "x_vector_only_mode": [
+     "BOOLEAN",
+     {
+      "default": false,
+      "tooltip": "X-vector only mode (Base model only):\n• False: Full voice cloning (high quality, requires ref_text)\n• True: Fast speaker embedding only (lower quality, no ref_text needed)\nOnly applies when voice_preset = None"
+     }
+    ]
+   },
+   "required": {
+    "device": [
+     [
+      "auto",
+      "cuda",
+      "cpu"
+     ],
+     {
+      "default": "auto",
+      "tooltip": "Device to run Qwen3-TTS model on:\n• auto: Automatically select best available\n• cuda: NVIDIA GPU (requires CUDA)\n• cpu: CPU-only processing (very slow)"
+     }
+    ],
+    "instruct": [
+     "STRING",
+     {
+      "default": "",
+      "multiline": true,
+      "tooltip": "Delivery instruction for the 1.7B CustomVoice checkpoint. Voice Designer owns the voice description when a VoiceDesign checkpoint is selected, so this field is disabled there. Base and 0.6B CustomVoice models ignore it."
+     }
+    ],
+    "language": [
+     [
+      "Auto",
+      "Chinese",
+      "English",
+      "Japanese",
+      "Korean",
+      "German",
+      "French",
+      "Russian",
+      "Portuguese",
+      "Spanish",
+      "Italian"
+     ],
+     {
+      "default": "Auto",
+      "tooltip": "Target language for speech generation:\n• Auto: Automatically detect from text\n• Portuguese: European Portuguese only for Base model\n  - Brazilian Portuguese: Only available with CustomVoice presets + instruction\n  - Example instruction: 'Speak with Brazilian Portuguese accent'"
+     }
+    ],
+    "max_new_tokens": [
+     "INT",
+     {
+      "default": 2048,
+      "max": 8192,
+      "min": 64,
+      "step": 64,
+      "tooltip": "Maximum tokens to generate:\n• 64-512: Very short\n• 2048: Standard (default)\n• 4096-8192: Long generation\nHigher = more VRAM + longer generation"
+     }
+    ],
+    "model_variant": [
+     [
+      "TTS - Base 1.7B (Voice Clone)",
+      "TTS - CustomVoice 1.7B (Presets + Instruction)",
+      "TTS - Base 0.6B (Voice Clone)",
+      "TTS - CustomVoice 0.6B (Presets)",
+      "Voice Design - 1.7B VoiceDesign",
+      "1.7B",
+      "0.6B"
+     ],
+     {
+      "default": "TTS - Base 1.7B (Voice Clone)",
+      "tooltip": "Explicit Qwen3-TTS checkpoint. Local installations use the local: prefix. Base models clone a reference voice, CustomVoice models use preset speakers, and VoiceDesign works only with Voice Designer."
+     }
+    ],
+    "repetition_penalty": [
+     "FLOAT",
+     {
+      "default": 1.05,
+      "max": 2.0,
+      "min": 1.0,
+      "step": 0.05,
+      "tooltip": "Repetition penalty:\n• 1.0: No penalty\n• 1.05: Slight penalty (default)\n• 1.2+: Strong penalty (may affect quality)"
+     }
+    ],
+    "temperature": [
+     "FLOAT",
+     {
+      "default": 0.9,
+      "max": 2.0,
+      "min": 0.1,
+      "step": 0.1,
+      "tooltip": "Sampling temperature:\n• Lower (0.5-0.7): More predictable\n• Default (0.9): Balanced\n• Higher (1.2+): More creative, potentially unstable"
+     }
+    ],
+    "top_k": [
+     "INT",
+     {
+      "default": 50,
+      "max": 100,
+      "min": 1,
+      "step": 1,
+      "tooltip": "Top-K sampling:\n• Lower (10-30): More focused, consistent\n• Default (50): Balanced\n• Higher (80-100): More varied output"
+     }
+    ],
+    "top_p": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.05,
+      "tooltip": "Top-P (nucleus) sampling:\n• Lower (0.7-0.9): More focused\n• Default (1.0): All tokens considered\n• Combine with top_k for fine control"
+     }
+    ],
+    "voice_preset": [
+     [
+      "None (Zero-shot / Custom)",
+      "Vivian",
+      "Serena",
+      "Uncle_Fu",
+      "Dylan",
+      "Eric",
+      "Ryan",
+      "Aiden",
+      "Ono_Anna",
+      "Sohee"
+     ],
+     {
+      "default": "None (Zero-shot / Custom)",
+      "tooltip": "Preset speaker for CustomVoice checkpoints. Ignored by Base and VoiceDesign models."
+     }
+    ]
+   }
+  },
+  "output": [
+   "TTS_ENGINE"
+  ]
+ },
+ "QwenImage21Cache": {
+  "input": {
+   "required": {
+    "device": [
+     "COMBO",
+     {
+      "default": "auto",
+      "multiselect": false,
+      "options": [
+       "auto",
+       "gpu",
+       "cpu",
+       "off"
+      ],
+      "tooltip": "auto uses spare VRAM, then RAM. cpu (RAM) is prefetched behind compute and costs little speed. off recomputes the prefix every step, which is slower but is the one way to rule the cache out."
+     }
+    ],
+    "dtype": [
+     "COMBO",
+     {
+      "default": "default",
+      "multiselect": false,
+      "options": [
+       "default",
+       "int8",
+       "int4"
+      ],
+      "tooltip": "Storage precision. default is lossless. int8 halves the cache at about bf16 accuracy, int4 quarters it but roughly doubles the per-step error."
+     }
+    ],
+    "model": [
+     "MODEL",
+     {}
+    ]
+   }
+  },
+  "output": [
+   "MODEL"
+  ]
+ },
+ "RandomNoise": {
+  "input": {
+   "required": {
+    "noise_seed": [
+     "INT",
+     {
+      "control_after_generate": true,
+      "default": 0,
+      "max": 18446744073709551615,
+      "min": 0
+     }
+    ]
+   }
+  },
+  "output": [
+   "NOISE"
+  ]
+ },
+ "RemeshMesh": {
+  "api_node": false,
+  "category": "3d/mesh",
+  "deprecated": false,
+  "description": "Re-extracts a uniformly tessellated mesh via a narrow-band distance field + Dual Contouring, on the active compute device. Normalizes messy / non-manifold / self-intersecting topology; run before Decimate Mesh to hit an exact face count. Output stays welded.",
+  "dev_only": false,
+  "display_name": "Remesh Mesh (Narrow-Band DC)",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "hidden": {
+    "unique_id": [
+     "UNIQUE_ID"
+    ]
+   },
+   "required": {
+    "band": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 1.0,
+      "max": 4.0,
+      "min": 0.5,
+      "step": 0.1,
+      "tooltip": "Narrow-band width in voxel units. In udf mode also offsets the surface; in solid mode it is the closing radius: creases are filleted and gaps bridged at this size, the surface sits half a voxel out."
+     }
+    ],
+    "drop_small_components": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 0.01,
+      "max": 0.5,
+      "min": 0.0,
+      "step": 0.005,
+      "tooltip": "Drop components below this fraction of the largest's face count. 0 disables."
+     }
+    ],
+    "fix_poles": [
+     "BOOLEAN",
+     {
+      "advanced": true,
+      "default": false,
+      "tooltip": "Collapse valence-3 vertex pairs (DC T-junction artifact)."
+     }
+    ],
+    "mesh": [
+     "MESH",
+     {}
+    ],
+    "precluster_max_verts": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 20000000,
+      "max": 100000000,
+      "min": 0,
+      "tooltip": "Cap input vertex count before the field queries, inputs above this are cluster-decimated to it first. Prevents OOM on huge meshes."
+     }
+    ],
+    "project_back": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.05,
+      "tooltip": "Linearly interpolate vertices toward the original surface (0 = pure DC, 1 = snapped)."
+     }
+    ],
+    "resolution": [
+     "INT",
+     {
+      "default": 512,
+      "max": 2048,
+      "min": 32,
+      "tooltip": "Voxel grid resolution (output density). 256 ~ 100k faces, 512 ~ 1M. For an exact face count, follow with Decimate Mesh."
+     }
+    ],
+    "sign_mode": [
+     "COMFY_DYNAMICCOMBO_V3",
+     {
+      "display_name": "sign_mode",
+      "options": [
+       {
+        "inputs": {
+         "required": {
+          "drop_enclosed_components": [
+           "BOOLEAN",
+           {
+            "advanced": true,
+            "default": false,
+            "tooltip": "Drop components inside the largest's bbox that fail a point-in-mesh raycast. Disable for legitimate nested parts."
+           }
+          ],
+          "drop_inverted_components": [
+           "BOOLEAN",
+           {
+            "advanced": true,
+            "default": false,
+            "tooltip": "Drop inward-normal (negative-volume) closed components — the UDF inner shell."
+           }
+          ],
+          "qef": [
+           "BOOLEAN",
+           {
+            "advanced": true,
+            "default": false,
+            "tooltip": "QEF (Quadratic Error Function) vertex placement: sharp edges on hard-surface input, jagged creases on organic input."
+           }
+          ]
+         }
+        },
+        "key": "udf"
+       },
+       {
+        "inputs": {
+         "required": {
+          "manifold": [
+           "BOOLEAN",
+           {
+            "default": false,
+            "tooltip": "Manifold Dual Contouring: 1-4 dual verts/voxel for multi-sheet cases. Slower."
+           }
+          ],
+          "qef": [
+           "BOOLEAN",
+           {
+            "default": true,
+            "tooltip": "QEF (Quadratic Error Function) dual-vertex placement (recovers sharp features) vs edge-crossing centroid."
+           }
+          ]
+         }
+        },
+        "key": "sdf"
+       },
+       {
+        "inputs": {
+         "required": {
+          "fill": [
+           "FLOAT",
+           {
+            "default": 20.0,
+            "max": 1000.0,
+            "min": 0.0,
+            "step": 1.0,
+            "tooltip": "Cost of closing an opening relative to following the surface. Lower closes larger openings (0 puts a lid on a cup); higher only closes small holes and cracks."
+           }
+          ],
+          "qef": [
+           "BOOLEAN",
+           {
+            "advanced": true,
+            "default": false,
+            "tooltip": "QEF (Quadratic Error Function) vertex placement: sharp edges on hard-surface input, jagged creases on organic input."
+           }
+          ]
+         }
+        },
+        "key": "solid"
+       }
+      ],
+      "tooltip": "udf: robust to messy/non-manifold input. sdf: clean single surface with QEF (Quadratic Error Function) sharp-feature recovery, but needs consistent winding. solid: one watertight solid from messy input: a global inside/outside graph cut (CelloCut) removes double shells and closes small holes. Slower."
+     }
+    ],
+    "smooth_iters": [
+     "INT",
+     {
+      "default": 0,
+      "max": 20,
+      "min": 0,
+      "tooltip": "Taubin smoothing iterations (0 = off). 2-3 cleans DC staircase-like artifacts; higher over-smooth QEF edges."
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "hidden": [
+    "unique_id"
+   ],
+   "required": [
+    "mesh",
+    "resolution",
+    "sign_mode",
+    "band",
+    "project_back",
+    "fix_poles",
+    "smooth_iters",
+    "drop_small_components",
+    "precluster_max_verts"
+   ]
+  },
+  "is_input_list": false,
+  "name": "RemeshMesh",
+  "output": [
+   "MESH"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "mesh"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_mesh_postprocess",
+  "search_aliases": null
+ },
+ "RemoveBackground": {
+  "api_node": false,
+  "category": "image/background removal",
+  "deprecated": false,
+  "description": "Generates a foreground mask to remove the background from an image using a background removal model.",
+  "dev_only": false,
+  "display_name": "Remove Background",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "bg_removal_model": [
+     "BACKGROUND_REMOVAL",
+     {
+      "tooltip": "Background removal model used to generate the mask"
+     }
+    ],
+    "image": [
+     "IMAGE",
+     {
+      "tooltip": "Input image to remove the background from"
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "bg_removal_model",
+    "image"
+   ]
+  },
+  "is_input_list": false,
+  "name": "RemoveBackground",
+  "output": [
+   "MASK"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "mask"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   "Generated foreground mask"
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_bg_removal",
+  "search_aliases": null
+ },
+ "RescaleCFG": {
+  "category": "model/patch",
+  "description": "",
+  "display_name": "RescaleCFG",
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "model": [
+     "MODEL"
+    ],
+    "multiplier": [
+     "FLOAT",
+     {
+      "default": 0.7,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.01
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "model",
+    "multiplier"
+   ]
+  },
+  "is_input_list": false,
+  "name": "RescaleCFG",
+  "output": [
+   "MODEL"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_name": [
+   "MODEL"
+  ],
+  "output_node": false,
+  "python_module": "comfy_extras.nodes_model_advanced",
+  "search_aliases": []
+ },
+ "SamplerCustomAdvanced": {
+  "input": {
+   "required": {
+    "guider": [
+     "GUIDER",
+     {}
+    ],
+    "latent_image": [
+     "LATENT",
+     {}
+    ],
+    "noise": [
+     "NOISE",
+     {}
+    ],
+    "sampler": [
+     "SAMPLER",
+     {}
+    ],
+    "sigmas": [
+     "SIGMAS",
+     {}
+    ]
+   }
+  },
+  "output": [
+   "LATENT",
+   "LATENT"
+  ]
+ },
+ "SaveAudioMP3": {
+  "input": {
+   "hidden": {
+    "extra_pnginfo": [
+     "EXTRA_PNGINFO"
+    ],
+    "prompt": [
+     "PROMPT"
+    ]
+   },
+   "required": {
+    "audio": [
+     "AUDIO",
+     {}
+    ],
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "audio/ComfyUI",
+      "multiline": false
+     }
+    ],
+    "quality": [
+     "COMBO",
+     {
+      "default": "V0",
+      "multiselect": false,
+      "options": [
+       "V0",
+       "128k",
+       "320k"
+      ]
+     }
+    ]
+   }
+  },
+  "output": [
+   "AUDIO"
+  ]
+ },
+ "SaveGLB": {
+  "api_node": false,
+  "category": "3d",
+  "deprecated": false,
+  "description": "",
+  "dev_only": false,
+  "display_name": "Save 3D Model",
+  "essentials_category": "Basics",
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "hidden": {
+    "extra_pnginfo": [
+     "EXTRA_PNGINFO"
+    ],
+    "prompt": [
+     "PROMPT"
+    ]
+   },
+   "required": {
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "3d/ComfyUI",
+      "multiline": false
+     }
+    ],
+    "mesh": [
+     "MESH,FILE_3D_GLB,FILE_3D_GLTF,FILE_3D_OBJ,FILE_3D_FBX,FILE_3D_STL,FILE_3D_USDZ,FILE_3D_PLY,FILE_3D_SPLAT,FILE_3D_SPZ,FILE_3D_KSPLAT,FILE_3D_SPLAT_ANY,FILE_3D_POINT_CLOUD_ANY,FILE_3D",
+     {
+      "tooltip": "Mesh or 3D file to save"
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "hidden": [
+    "prompt",
+    "extra_pnginfo"
+   ],
+   "required": [
+    "mesh",
+    "filename_prefix"
+   ]
+  },
+  "is_input_list": false,
+  "name": "SaveGLB",
+  "output": [],
+  "output_is_list": [],
+  "output_matchtypes": null,
+  "output_name": [],
+  "output_node": true,
+  "output_tooltips": [],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_save_3d",
+  "search_aliases": [
+   "export 3d model",
+   "save mesh"
+  ]
+ },
+ "SaveImage": {
+  "input": {
+   "hidden": {
+    "extra_pnginfo": "EXTRA_PNGINFO",
+    "prompt": "PROMPT"
+   },
+   "required": {
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "ComfyUI",
+      "tooltip": "The prefix for the file to save. This may include formatting information such as %date:yyyy-MM-dd% or %Empty Latent Image.width% to include values from nodes."
+     }
+    ],
+    "images": [
+     "IMAGE",
+     {
+      "tooltip": "The images to save."
+     }
+    ]
+   }
+  },
+  "output": [
+   "IMAGE"
+  ]
+ },
+ "SaveVideo": {
+  "input": {
+   "hidden": {
+    "extra_pnginfo": [
+     "EXTRA_PNGINFO"
+    ],
+    "prompt": [
+     "PROMPT"
+    ]
+   },
+   "optional": {
+    "codec": [
+     "COMFY_DYNAMICCOMBO_V3",
+     {
+      "hidden": true,
+      "options": [
+       {
+        "inputs": {
+         "required": {}
+        },
+        "key": "auto"
+       },
+       {
+        "inputs": {
+         "optional": {
+          "encoding": [
+           "COMFY_DYNAMICCOMBO_V3",
+           {
+            "display_name": "encoding mode",
+            "options": [
+             {
+              "inputs": {
+               "required": {}
+              },
+              "key": "auto"
+             },
+             {
+              "inputs": {
+               "required": {
+                "crf": [
+                 "FLOAT",
+                 {
+                  "default": 18.0,
+                  "max": 51.0,
+                  "min": 0.0,
+                  "step": 1.0,
+                  "tooltip": "Lower values produce higher quality and larger files."
+                 }
+                ]
+               }
+              },
+              "key": "re-encode"
+             }
+            ],
+            "tooltip": "Automatic preserves compatible H.264 streams. Re-encode applies custom encoding options."
+           }
+          ]
+         },
+         "required": {}
+        },
+        "key": "h264"
+       },
+       {
+        "inputs": {
+         "optional": {
+          "encoding": [
+           "COMFY_DYNAMICCOMBO_V3",
+           {
+            "display_name": "encoding mode",
+            "options": [
+             {
+              "inputs": {
+               "required": {}
+              },
+              "key": "auto"
+             },
+             {
+              "inputs": {
+               "required": {
+                "crf": [
+                 "FLOAT",
+                 {
+                  "default": 24.0,
+                  "max": 63.0,
+                  "min": 0.0,
+                  "step": 1.0,
+                  "tooltip": "Lower values produce higher quality and larger files."
+                 }
+                ]
+               }
+              },
+              "key": "re-encode"
+             }
+            ],
+            "tooltip": "Automatic preserves compatible AV1 streams. Re-encode applies custom encoding options."
+           }
+          ]
+         },
+         "required": {}
+        },
+        "key": "av1"
+       }
+      ],
+      "tooltip": "The output video codec. Auto preserves a compatible source stream. H.264 and AV1 re-encoding support SDR, HDR (HLG), and HDR PQ."
+     }
+    ]
+   },
+   "required": {
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "video/ComfyUI",
+      "multiline": false,
+      "tooltip": "The prefix for the file to save. This may include formatting information such as %date:yyyy-MM-dd% or %Empty Latent Image.width% to include values from nodes."
+     }
+    ],
+    "format": [
+     "COMFY_DYNAMICCOMBO_V3",
+     {
+      "options": [
+       {
+        "inputs": {
+         "required": {
+          "codec": [
+           "COMFY_DYNAMICCOMBO_V3",
+           {
+            "options": [
+             {
+              "inputs": {
+               "required": {}
+              },
+              "key": "auto"
+             },
+             {
+              "inputs": {
+               "optional": {
+                "encoding": [
+                 "COMFY_DYNAMICCOMBO_V3",
+                 {
+                  "display_name": "encoding mode",
+                  "options": [
+                   {
+                    "inputs": {
+                     "required": {}
+                    },
+                    "key": "auto"
+                   },
+                   {
+                    "inputs": {
+                     "required": {
+                      "crf": [
+                       "FLOAT",
+                       {
+                        "default": 18.0,
+                        "max": 51.0,
+                        "min": 0.0,
+                        "step": 1.0,
+                        "tooltip": "Lower values produce higher quality and larger files."
+                       }
+                      ]
+                     }
+                    },
+                    "key": "re-encode"
+                   }
+                  ],
+                  "tooltip": "Automatic preserves compatible H.264 streams. Re-encode applies custom encoding options."
+                 }
+                ]
+               },
+               "required": {}
+              },
+              "key": "h264"
+             },
+             {
+              "inputs": {
+               "optional": {
+                "encoding": [
+                 "COMFY_DYNAMICCOMBO_V3",
+                 {
+                  "display_name": "encoding mode",
+                  "options": [
+                   {
+                    "inputs": {
+                     "required": {}
+                    },
+                    "key": "auto"
+                   },
+                   {
+                    "inputs": {
+                     "required": {
+                      "crf": [
+                       "FLOAT",
+                       {
+                        "default": 24.0,
+                        "max": 63.0,
+                        "min": 0.0,
+                        "step": 1.0,
+                        "tooltip": "Lower values produce higher quality and larger files."
+                       }
+                      ]
+                     }
+                    },
+                    "key": "re-encode"
+                   }
+                  ],
+                  "tooltip": "Automatic preserves compatible AV1 streams. Re-encode applies custom encoding options."
+                 }
+                ]
+               },
+               "required": {}
+              },
+              "key": "av1"
+             }
+            ],
+            "tooltip": "The output video codec. Auto preserves a compatible source stream. H.264 and AV1 re-encoding support SDR, HDR (HLG), and HDR PQ."
+           }
+          ]
+         }
+        },
+        "key": "auto"
+       },
+       {
+        "inputs": {
+         "required": {
+          "codec": [
+           "COMFY_DYNAMICCOMBO_V3",
+           {
+            "options": [
+             {
+              "inputs": {
+               "required": {}
+              },
+              "key": "auto"
+             },
+             {
+              "inputs": {
+               "optional": {
+                "encoding": [
+                 "COMFY_DYNAMICCOMBO_V3",
+                 {
+                  "display_name": "encoding mode",
+                  "options": [
+                   {
+                    "inputs": {
+                     "required": {}
+                    },
+                    "key": "auto"
+                   },
+                   {
+                    "inputs": {
+                     "required": {
+                      "crf": [
+                       "FLOAT",
+                       {
+                        "default": 18.0,
+                        "max": 51.0,
+                        "min": 0.0,
+                        "step": 1.0,
+                        "tooltip": "Lower values produce higher quality and larger files."
+                       }
+                      ]
+                     }
+                    },
+                    "key": "re-encode"
+                   }
+                  ],
+                  "tooltip": "Automatic preserves compatible H.264 streams. Re-encode applies custom encoding options."
+                 }
+                ]
+               },
+               "required": {}
+              },
+              "key": "h264"
+             },
+             {
+              "inputs": {
+               "optional": {
+                "encoding": [
+                 "COMFY_DYNAMICCOMBO_V3",
+                 {
+                  "display_name": "encoding mode",
+                  "options": [
+                   {
+                    "inputs": {
+                     "required": {}
+                    },
+                    "key": "auto"
+                   },
+                   {
+                    "inputs": {
+                     "required": {
+                      "crf": [
+                       "FLOAT",
+                       {
+                        "default": 24.0,
+                        "max": 63.0,
+                        "min": 0.0,
+                        "step": 1.0,
+                        "tooltip": "Lower values produce higher quality and larger files."
+                       }
+                      ]
+                     }
+                    },
+                    "key": "re-encode"
+                   }
+                  ],
+                  "tooltip": "Automatic preserves compatible AV1 streams. Re-encode applies custom encoding options."
+                 }
+                ]
+               },
+               "required": {}
+              },
+              "key": "av1"
+             }
+            ],
+            "tooltip": "The output video codec. Auto preserves a compatible source stream. H.264 and AV1 re-encoding support SDR, HDR (HLG), and HDR PQ."
+           }
+          ]
+         }
+        },
+        "key": "mp4"
+       },
+       {
+        "inputs": {
+         "required": {
+          "codec": [
+           "COMFY_DYNAMICCOMBO_V3",
+           {
+            "options": [
+             {
+              "inputs": {
+               "required": {}
+              },
+              "key": "auto"
+             },
+             {
+              "inputs": {
+               "optional": {
+                "encoding": [
+                 "COMFY_DYNAMICCOMBO_V3",
+                 {
+                  "display_name": "encoding mode",
+                  "options": [
+                   {
+                    "inputs": {
+                     "required": {}
+                    },
+                    "key": "auto"
+                   },
+                   {
+                    "inputs": {
+                     "required": {
+                      "crf": [
+                       "FLOAT",
+                       {
+                        "default": 18.0,
+                        "max": 51.0,
+                        "min": 0.0,
+                        "step": 1.0,
+                        "tooltip": "Lower values produce higher quality and larger files."
+                       }
+                      ]
+                     }
+                    },
+                    "key": "re-encode"
+                   }
+                  ],
+                  "tooltip": "Automatic preserves compatible H.264 streams. Re-encode applies custom encoding options."
+                 }
+                ]
+               },
+               "required": {}
+              },
+              "key": "h264"
+             },
+             {
+              "inputs": {
+               "optional": {
+                "encoding": [
+                 "COMFY_DYNAMICCOMBO_V3",
+                 {
+                  "display_name": "encoding mode",
+                  "options": [
+                   {
+                    "inputs": {
+                     "required": {}
+                    },
+                    "key": "auto"
+                   },
+                   {
+                    "inputs": {
+                     "required": {
+                      "crf": [
+                       "FLOAT",
+                       {
+                        "default": 24.0,
+                        "max": 63.0,
+                        "min": 0.0,
+                        "step": 1.0,
+                        "tooltip": "Lower values produce higher quality and larger files."
+                       }
+                      ]
+                     }
+                    },
+                    "key": "re-encode"
+                   }
+                  ],
+                  "tooltip": "Automatic preserves compatible AV1 streams. Re-encode applies custom encoding options."
+                 }
+                ]
+               },
+               "required": {}
+              },
+              "key": "av1"
+             }
+            ],
+            "tooltip": "The output video codec. Auto preserves a compatible source stream. H.264 and AV1 re-encoding support SDR, HDR (HLG), and HDR PQ."
+           }
+          ]
+         }
+        },
+        "key": "mkv"
+       },
+       {
+        "inputs": {
+         "required": {
+          "codec": [
+           "COMFY_DYNAMICCOMBO_V3",
+           {
+            "options": [
+             {
+              "inputs": {
+               "required": {}
+              },
+              "key": "auto"
+             },
+             {
+              "inputs": {
+               "optional": {
+                "encoding": [
+                 "COMFY_DYNAMICCOMBO_V3",
+                 {
+                  "display_name": "encoding mode",
+                  "options": [
+                   {
+                    "inputs": {
+                     "required": {}
+                    },
+                    "key": "auto"
+                   },
+                   {
+                    "inputs": {
+                     "required": {
+                      "crf": [
+                       "FLOAT",
+                       {
+                        "default": 24.0,
+                        "max": 63.0,
+                        "min": 0.0,
+                        "step": 1.0,
+                        "tooltip": "Lower values produce higher quality and larger files."
+                       }
+                      ]
+                     }
+                    },
+                    "key": "re-encode"
+                   }
+                  ],
+                  "tooltip": "Automatic preserves compatible AV1 streams. Re-encode applies custom encoding options."
+                 }
+                ]
+               },
+               "required": {}
+              },
+              "key": "av1"
+             }
+            ],
+            "tooltip": "The output video codec. Auto preserves a compatible source stream. H.264 and AV1 re-encoding support SDR, HDR (HLG), and HDR PQ."
+           }
+          ]
+         }
+        },
+        "key": "webm"
+       }
+      ],
+      "tooltip": "The output container. Auto uses MP4 for Auto/H.264 and WebM for AV1. MP4, MKV, and WebM select a specific container."
+     }
+    ],
+    "video": [
+     "VIDEO",
+     {
+      "tooltip": "The video to save."
+     }
+    ]
+   }
+  },
+  "output": [
+   "VIDEO"
+  ]
+ },
+ "TextEncodeQwenImage21": {
+  "input": {
+   "optional": {
+    "vae": [
+     "VAE",
+     {}
+    ]
+   },
+   "required": {
+    "clip": [
+     "CLIP",
+     {}
+    ],
+    "images": [
+     "COMFY_AUTOGROW_V3",
+     {
+      "template": {
+       "input": {
+        "required": {
+         "image": [
+          "IMAGE",
+          {}
+         ]
+        }
+       },
+       "min": 0,
+       "names": [
+        "image_1",
+        "image_2",
+        "image_3",
+        "image_4",
+        "image_5",
+        "image_6",
+        "image_7",
+        "image_8",
+        "image_9",
+        "image_10",
+        "image_11",
+        "image_12",
+        "image_13",
+        "image_14",
+        "image_15",
+        "image_16"
+       ]
+      },
+      "tooltip": "Reference images, seen by the text encoder and spliced into the sequence as VAE latents."
+     }
+    ],
+    "negative_prompt": [
+     "STRING",
+     {
+      "dynamicPrompts": true,
+      "multiline": true
+     }
+    ],
+    "prompt": [
+     "STRING",
+     {
+      "dynamicPrompts": true,
+      "multiline": true
+     }
+    ],
+    "resolution": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 4096,
+      "min": 0,
+      "step": 32,
+      "tooltip": "Reference images are resized to about resolution x resolution pixels, at multiples of 32, preserving aspect ratio. 0 keeps each reference at its own size, rounded to a multiple of 32. "
+     }
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ]
+ },
+ "TextGenerate": {
+  "input": {
+   "optional": {
+    "audio": [
+     "AUDIO",
+     {}
+    ],
+    "image": [
+     "IMAGE",
+     {}
+    ],
+    "mtp": [
+     "COMBO",
+     {
+      "default": "auto",
+      "multiselect": false,
+      "options": [
+       "auto",
+       "off",
+       "2",
+       "3",
+       "4",
+       "5"
+      ],
+      "tooltip": "Speculative decoding with the checkpoint's multi-token-prediction head. No effect without MTP weights. auto adapts the draft depth; 2-5 pins it. Sampled output stays correctly distributed but differs from non-MTP output for the same seed."
+     }
+    ],
+    "system_prompt": [
+     "STRING",
+     {
+      "forceInput": true,
+      "multiline": false,
+      "tooltip": "Replaces the system prompt in the model's chat template. Ignored when the default template is not used."
+     }
+    ],
+    "thinking": [
+     "BOOLEAN",
+     {
+      "default": false,
+      "tooltip": "Operate in thinking mode if the model supports it."
+     }
+    ],
+    "use_default_template": [
+     "BOOLEAN",
+     {
+      "advanced": true,
+      "default": true,
+      "tooltip": "Use the built in system prompt/template if the model has one."
+     }
+    ],
+    "video": [
+     "IMAGE",
+     {
+      "tooltip": "Video frames as image batch. Assumed to be 24 FPS; subsampled to 1 FPS internally."
+     }
+    ]
+   },
+   "required": {
+    "clip": [
+     "CLIP",
+     {}
+    ],
+    "max_length": [
+     "INT",
+     {
+      "default": 512,
+      "max": 32768,
+      "min": 1
+     }
+    ],
+    "prompt": [
+     "STRING",
+     {
+      "default": "",
+      "dynamicPrompts": true,
+      "multiline": true
+     }
+    ],
+    "sampling_mode": [
+     "COMFY_DYNAMICCOMBO_V3",
+     {
+      "display_name": "Sampling Mode",
+      "options": [
+       {
+        "inputs": {
+         "optional": {
+          "presence_penalty": [
+           "FLOAT",
+           {
+            "default": 0.0,
+            "max": 5.0,
+            "min": 0.0,
+            "step": 0.01
+           }
+          ]
+         },
+         "required": {
+          "min_p": [
+           "FLOAT",
+           {
+            "default": 0.05,
+            "max": 1.0,
+            "min": 0.0,
+            "step": 0.01
+           }
+          ],
+          "repetition_penalty": [
+           "FLOAT",
+           {
+            "default": 1.05,
+            "max": 5.0,
+            "min": 0.0,
+            "step": 0.01
+           }
+          ],
+          "seed": [
+           "INT",
+           {
+            "default": 0,
+            "max": 18446744073709551615,
+            "min": 0
+           }
+          ],
+          "temperature": [
+           "FLOAT",
+           {
+            "default": 0.7,
+            "max": 2.0,
+            "min": 0.01,
+            "step": 1e-06
+           }
+          ],
+          "top_k": [
+           "INT",
+           {
+            "default": 64,
+            "max": 1000,
+            "min": 0
+           }
+          ],
+          "top_p": [
+           "FLOAT",
+           {
+            "default": 0.95,
+            "max": 1.0,
+            "min": 0.0,
+            "step": 0.01
+           }
+          ]
+         }
+        },
+        "key": "on"
+       },
+       {
+        "inputs": {
+         "required": {}
+        },
+        "key": "off"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "output": [
+   "STRING",
+   "STRING"
+  ]
+ },
+ "Trellis2Conditioning": {
+  "api_node": false,
+  "category": "model/conditioning/trellis",
+  "deprecated": false,
+  "description": "",
+  "dev_only": false,
+  "display_name": "Trellis2 Conditioning",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "clip_vision_model": [
+     "CLIP_VISION",
+     {}
+    ],
+    "image": [
+     "IMAGE",
+     {
+      "tooltip": "Preprocessed image from ImageCropToMask (pad_factor=1.0 for TRELLIS.2)."
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "clip_vision_model",
+    "image"
+   ]
+  },
+  "is_input_list": false,
+  "name": "Trellis2Conditioning",
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING"
+  ],
+  "output_is_list": [
+   false,
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "positive",
+   "negative"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null,
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_trellis2",
+  "search_aliases": null
+ },
+ "Trellis2ShapeStage": {
+  "api_node": false,
+  "category": "model/conditioning/trellis",
+  "deprecated": false,
+  "description": "",
+  "dev_only": false,
+  "display_name": "Trellis2 Shape Stage",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "negative": [
+     "CONDITIONING",
+     {}
+    ],
+    "positive": [
+     "CONDITIONING",
+     {}
+    ],
+    "voxel": [
+     "VOXEL",
+     {
+      "tooltip": "Dense structure voxel from VaeDecodeStructureTrellis2."
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "positive",
+    "negative",
+    "voxel"
+   ]
+  },
+  "is_input_list": false,
+  "name": "Trellis2ShapeStage",
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_is_list": [
+   false,
+   false,
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "positive",
+   "negative",
+   "LATENT"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null,
+   null,
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_trellis2",
+  "search_aliases": null
+ },
+ "Trellis2TextureStage": {
+  "api_node": false,
+  "category": "model/conditioning/trellis",
+  "deprecated": false,
+  "description": "",
+  "dev_only": false,
+  "display_name": "Trellis2 Texture Stage",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "negative": [
+     "CONDITIONING",
+     {}
+    ],
+    "positive": [
+     "CONDITIONING",
+     {}
+    ],
+    "shape_latent": [
+     "LATENT",
+     {}
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "positive",
+    "negative",
+    "shape_latent"
+   ]
+  },
+  "is_input_list": false,
+  "name": "Trellis2TextureStage",
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_is_list": [
+   false,
+   false,
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "positive",
+   "negative",
+   "LATENT"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null,
+   null,
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_trellis2",
+  "search_aliases": null
+ },
+ "Trellis2UpsampleStage": {
+  "api_node": false,
+  "category": "model/conditioning/trellis",
+  "deprecated": false,
+  "description": "",
+  "dev_only": false,
+  "display_name": "Trellis2 Upsample Stage",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "negative": [
+     "CONDITIONING",
+     {}
+    ],
+    "positive": [
+     "CONDITIONING",
+     {}
+    ],
+    "shape_latent": [
+     "LATENT",
+     {
+      "tooltip": "The 512-resolution shape latent output from the first shape-stage KSampler."
+     }
+    ],
+    "target_resolution": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 2048,
+      "min": 1024,
+      "step": 128,
+      "tooltip": "Voxel resolution of the upsampled shape. Higher = more detail, more VRAM."
+     }
+    ],
+    "vae": [
+     "VAE",
+     {}
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "positive",
+    "negative",
+    "shape_latent",
+    "vae",
+    "target_resolution"
+   ]
+  },
+  "is_input_list": false,
+  "name": "Trellis2UpsampleStage",
+  "output": [
+   "CONDITIONING",
+   "CONDITIONING",
+   "LATENT"
+  ],
+  "output_is_list": [
+   false,
+   false,
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "positive",
+   "negative",
+   "LATENT"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null,
+   null,
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_trellis2",
+  "search_aliases": null
+ },
+ "UNETLoader": {
+  "input": {
+   "required": {
+    "unet_name": [
+     [
+      "NoctQ_V4_int8_convrot.safetensors",
+      "minimax_h3_fl2va_pruned_w6a8.safetensors"
+     ]
+    ],
+    "weight_dtype": [
+     [
+      "default",
+      "fp8_e4m3fn",
+      "fp8_e4m3fn_fast",
+      "fp8_e5m2"
+     ],
+     {
+      "advanced": true
+     }
+    ]
+   }
+  },
+  "output": [
+   "MODEL"
+  ]
+ },
+ "UnifiedTTSTextNode": {
+  "input": {
+   "optional": {
+    "batch_size": [
+     "INT",
+     {
+      "default": 0,
+      "max": 32,
+      "min": 0,
+      "step": 1,
+      "tooltip": "Legacy parallel workers for ChatterBox Classic only. 0-1 = sequential (recommended). Values above 1 process separate text segments concurrently; this is not true model batching, usually provides little or no speed benefit, and may use more VRAM. Unsupported for other TTS engines."
+     }
+    ],
+    "chunk_combination_method": [
+     [
+      "auto",
+      "concatenate",
+      "silence_padding",
+      "crossfade"
+     ],
+     {
+      "default": "auto",
+      "tooltip": "Method to combine audio chunks: 'auto' chooses best method, 'concatenate' joins directly, 'silence_padding' adds silence between chunks, 'crossfade' smoothly blends chunks."
+     }
+    ],
+    "enable_audio_cache": [
+     "BOOLEAN",
+     {
+      "default": true,
+      "tooltip": "If enabled, generated audio segments will be cached in memory to speed up subsequent runs with identical parameters."
+     }
+    ],
+    "enable_chunking": [
+     "BOOLEAN",
+     {
+      "default": true,
+      "tooltip": "Enable text chunking for long texts. When enabled, long texts are split into smaller chunks for more stable generation."
+     }
+    ],
+    "max_chars_per_chunk": [
+     "INT",
+     {
+      "default": 400,
+      "max": 1000,
+      "min": 100,
+      "step": 50,
+      "tooltip": "Maximum characters per chunk when chunking is enabled. Smaller chunks = more stable but potentially less coherent speech."
+     }
+    ],
+    "opt_narrator": [
+     "*",
+     {
+      "tooltip": "Voice reference: Connect Character Voices node output OR direct audio input. Takes priority over narrator_voice dropdown when connected."
+     }
+    ],
+    "silence_between_chunks_ms": [
+     "INT",
+     {
+      "default": 100,
+      "max": 500,
+      "min": 0,
+      "step": 25,
+      "tooltip": "Silence duration between chunks in milliseconds when using 'silence_padding' combination method. Longer silences = more distinct separation between chunks."
+     }
+    ]
+   },
+   "required": {
+    "TTS_engine": [
+     "TTS_ENGINE",
+     {
+      "tooltip": "TTS engine configuration from ChatterBox Engine or F5 TTS Engine nodes"
+     }
+    ],
+    "narrator_voice": [
+     [
+      "none",
+      "voices_examples/higgs_audio/belinda.wav",
+      "voices_examples/higgs_audio/broom_salesman.wav",
+      "voices_examples/higgs_audio/chadwick.wav",
+      "voices_examples/Clint_Eastwood CC3 (enhanced2).wav",
+      "voices_examples/David_Attenborough CC3.wav",
+      "voices_examples/higgs_audio/en_man.wav",
+      "voices_examples/higgs_audio/en_woman.wav",
+      "voices_examples/female/female_01.wav",
+      "voices_examples/female/female_02.wav",
+      "voices_examples/higgs_audio/mabel.wav",
+      "voices_examples/male/male_01.wav",
+      "voices_examples/male/male_02.wav",
+      "voices_examples/Morgan_Freeman CC3.wav",
+      "voices_examples/Sophie_Anderson CC3.wav",
+      "voices_examples/higgs_audio/vex.wav",
+      "voices_examples/higgs_audio/zh_man_sichuan.wav"
+     ],
+     {
+      "default": "none",
+      "tooltip": "Fallback narrator voice from voice folders. Used when opt_narrator is not connected. Select 'none' for engines that support direct TTS without voice cloning, such as MOSS."
+     }
+    ],
+    "seed": [
+     "INT",
+     {
+      "default": 1,
+      "max": 4294967295,
+      "min": 0,
+      "tooltip": "Seed for reproducible TTS generation. Same seed with same inputs will produce identical results. Set to 0 for random generation."
+     }
+    ],
+    "text": [
+     "STRING",
+     {
+      "default": "Hello! This is unified TTS with character switching support.\n[Alice] Hi there! I'm Alice speaking with the selected TTS engine.\n[Bob] And I'm Bob! This works with any TTS engine.\nBack to the main narrator voice for the conclusion.",
+      "multiline": true,
+      "tooltip": "Text to convert to speech. Use [Character] tags for voice switching. Characters not found in voice folders will use the narrator voice."
+     }
+    ]
+   }
+  },
+  "output": [
+   "AUDIO",
+   "STRING"
+  ]
+ },
+ "UnwrapMesh": {
+  "api_node": false,
+  "category": "3d/texturing",
+  "deprecated": false,
+  "description": "Generates a UV atlas: segments the surface into charts, parameterizes each, packs into a [0,1] atlas. Vertices on chart seams are duplicated (one copy per chart, same position, own UV), so the output mesh has more vertices than the input. Run after Remesh/Decimate, before texture baking.",
+  "dev_only": false,
+  "display_name": "Unwrap Mesh UVs",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "hidden": {
+    "unique_id": [
+     "UNIQUE_ID"
+    ]
+   },
+   "required": {
+    "mesh": [
+     "MESH",
+     {}
+    ],
+    "padding": [
+     "INT",
+     {
+      "default": 1,
+      "max": 16,
+      "min": 0,
+      "tooltip": "Texel padding between charts."
+     }
+    ],
+    "resolution": [
+     "INT",
+     {
+      "default": 1024,
+      "max": 8192,
+      "min": 0,
+      "step": 256,
+      "tooltip": "Target atlas resolution for texel-density auto-scale (0 = fit-to-content)."
+     }
+    ],
+    "segmenter": [
+     "COMBO",
+     {
+      "default": "pec",
+      "multiselect": false,
+      "options": [
+       "pec",
+       "adaptive"
+      ],
+      "tooltip": "pec: fast parallel-edge-collapse charting on GPU. adaptive: CPU, slower."
+     }
+    ],
+    "weld_distance": [
+     "FLOAT",
+     {
+      "default": 0.0,
+      "max": 1.0,
+      "min": 0.0,
+      "step": 0.0001,
+      "tooltip": "Coincident-vert merge radius as a fraction of mesh extent (0 = auto). Raise to ~0.001 if you get per-triangle charts (unwelded input)."
+     }
+    ]
+   }
+  },
+  "input_order": {
+   "hidden": [
+    "unique_id"
+   ],
+   "required": [
+    "mesh",
+    "segmenter",
+    "resolution",
+    "padding",
+    "weld_distance"
+   ]
+  },
+  "is_input_list": false,
+  "name": "UnwrapMesh",
+  "output": [
+   "MESH"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "mesh"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_mesh_postprocess",
+  "search_aliases": null
+ },
+ "VAEDecode": {
+  "input": {
+   "required": {
+    "samples": [
+     "LATENT",
+     {
+      "tooltip": "The latent to be decoded."
+     }
+    ],
+    "vae": [
+     "VAE",
+     {
+      "tooltip": "The VAE model used for decoding the latent."
+     }
+    ]
+   }
+  },
+  "output": [
+   "IMAGE"
+  ]
+ },
+ "VAEDecodeAudio": {
+  "input": {
+   "required": {
+    "samples": [
+     "LATENT",
+     {}
+    ],
+    "vae": [
+     "VAE",
+     {}
+    ]
+   }
+  },
+  "output": [
+   "AUDIO"
+  ]
+ },
+ "VAELoader": {
+  "input": {
+   "required": {
+    "vae_name": [
+     [
+      "minimax_h3_audio_vae_fp32.safetensors",
+      "minimax_h3_video_vae_int8_convrot.safetensors",
+      "qwen_image_2.1_vae_bf16.safetensors",
+      "pixel_space"
+     ]
+    ]
+   }
+  },
+  "output": [
+   "VAE"
+  ]
+ },
+ "VaeDecodeShapeTrellis": {
+  "api_node": false,
+  "category": "model/latent/trellis",
+  "deprecated": false,
+  "description": "",
+  "dev_only": false,
+  "display_name": "Trellis2 VAE Decode Shape",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "samples": [
+     "LATENT",
+     {}
+    ],
+    "vae": [
+     "VAE",
+     {}
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "samples",
+    "vae"
+   ]
+  },
+  "is_input_list": false,
+  "name": "VaeDecodeShapeTrellis",
+  "output": [
+   "MESH",
+   "SHAPE_SUBDIVIDES"
+  ],
+  "output_is_list": [
+   false,
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "mesh",
+   "shape_subdivides"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null,
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_trellis2",
+  "search_aliases": null
+ },
+ "VaeDecodeStructureTrellis2": {
+  "api_node": false,
+  "category": "model/latent/trellis",
+  "deprecated": false,
+  "description": "",
+  "dev_only": false,
+  "display_name": "Trellis2 VAE Decode Structure",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "resolution": [
+     "COMBO",
+     {
+      "default": "32",
+      "multiselect": false,
+      "options": [
+       "32",
+       "64"
+      ]
+     }
+    ],
+    "samples": [
+     "LATENT",
+     {}
+    ],
+    "vae": [
+     "VAE",
+     {}
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "samples",
+    "vae",
+    "resolution"
+   ]
+  },
+  "is_input_list": false,
+  "name": "VaeDecodeStructureTrellis2",
+  "output": [
+   "VOXEL"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "voxel"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_trellis2",
+  "search_aliases": null
+ },
+ "VaeDecodeTextureTrellis": {
+  "api_node": false,
+  "category": "model/latent/trellis",
+  "deprecated": false,
+  "description": "",
+  "dev_only": false,
+  "display_name": "Trellis2 VAE Decode Texture",
+  "essentials_category": null,
+  "experimental": false,
+  "has_intermediate_output": false,
+  "input": {
+   "required": {
+    "samples": [
+     "LATENT",
+     {}
+    ],
+    "shape_subdivides": [
+     "SHAPE_SUBDIVIDES",
+     {
+      "tooltip": "Shape information used to guide higher-detail reconstruction during decoding. Helps preserve structure consistency at higher resolutions."
+     }
+    ],
+    "vae": [
+     "VAE",
+     {}
+    ]
+   }
+  },
+  "input_order": {
+   "required": [
+    "samples",
+    "vae",
+    "shape_subdivides"
+   ]
+  },
+  "is_input_list": false,
+  "name": "VaeDecodeTextureTrellis",
+  "output": [
+   "VOXEL"
+  ],
+  "output_is_list": [
+   false
+  ],
+  "output_matchtypes": null,
+  "output_name": [
+   "voxel_colors"
+  ],
+  "output_node": false,
+  "output_tooltips": [
+   null
+  ],
+  "price_badge": null,
+  "python_module": "comfy_extras.nodes_trellis2",
+  "search_aliases": null
+ },
+ "YuE2GenerateMusic": {
+  "input": {
+   "optional": {
+    "cfg_scale": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 1.0,
+      "max": 100.0,
+      "min": 0.0,
+      "step": 0.01,
+      "tooltip": "Autoregressive guidance for style and lyrics. 1.0 disables CFG, matching the ABC workflow. Use 1.01 to match the original off-mode guidance."
+     }
+    ]
+   },
+   "required": {
+    "abc": [
+     "STRING",
+     {
+      "default": "",
+      "multiline": true,
+      "tooltip": "Connect the ABC generator or supply an edited score. Leave empty to use off mode automatically."
+     }
+    ],
+    "clip": [
+     "CLIP",
+     {}
+    ],
+    "lyrics": [
+     "STRING",
+     {
+      "dynamicPrompts": true,
+      "multiline": true
+     }
+    ],
+    "max_duration": [
+     "FLOAT",
+     {
+      "default": 360.0,
+      "max": 900.0,
+      "min": 0.04,
+      "step": 0.04,
+      "tooltip": "Maximum duration in seconds. Automatically reduced for long prompts; generation can stop earlier."
+     }
+    ],
+    "mode": [
+     "COMBO",
+     {
+      "multiselect": false,
+      "options": [
+       "full",
+       "melody"
+      ],
+      "tooltip": "full: generates melody and chords; melody: generates melody only, recommended for covers."
+     }
+    ],
+    "repetition_penalty": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 1.2,
+      "max": 10.0,
+      "min": 0.01,
+      "step": 0.01
+     }
+    ],
+    "seed": [
+     "INT",
+     {
+      "control_after_generate": true,
+      "default": 0,
+      "max": 18446744073709551615,
+      "min": 0
+     }
+    ],
+    "style": [
+     "STRING",
+     {
+      "dynamicPrompts": true,
+      "multiline": true
+     }
+    ],
+    "temperature": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 1.0,
+      "max": 5.0,
+      "min": 0.0,
+      "step": 0.05
+     }
+    ],
+    "top_k": [
+     "INT",
+     {
+      "advanced": true,
+      "default": 100,
+      "max": 32768,
+      "min": 1
+     }
+    ],
+    "top_p": [
+     "FLOAT",
+     {
+      "advanced": true,
+      "default": 0.95,
+      "max": 1.0,
+      "min": 0.01,
+      "step": 0.01
+     }
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING",
+   "FLOAT"
+  ]
+ }
+}

@@ -1,0 +1,78 @@
+# No GPU needed: lint, backend tests, UI tests against a mocked API, the MCP server against a
+# GPU-less studio, and the Docker image build.
+name: test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Lint
+        run: ./lint.sh
+      - name: Build the UI (served by the API tests)
+        working-directory: server/web
+        run: npm ci && npm run build
+      - name: Pytest
+        working-directory: server
+        run: uv run -q --python 3.12 --with-requirements requirements.txt --with pytest --with pytest-aiohttp --with pytest-asyncio pytest -q
+
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: server/web/package-lock.json
+      - name: Install and build
+        working-directory: server/web
+        run: |
+          npm ci
+          npm run build
+      - name: Playwright
+        working-directory: server/web
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+
+  mcp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: astral-sh/setup-uv@v6
+      - name: Build the MCP server
+        working-directory: mcp
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm run build
+      - name: Protocol check against a GPU-less studio
+        run: |
+          mkdir -p server/web/dist && echo '<!doctype html>' > server/web/dist/index.html && mkdir -p server/web/dist/assets
+          export STUDIO_DATA=$(mktemp -d) STUDIO_PORT=8190 COLAB_BIN=/bin/false
+          (cd server && uv run -q --python 3.12 --with-requirements requirements.txt python app.py &)
+          for _ in $(seq 30); do curl -sf 127.0.0.1:8190/api/runtime >/dev/null && break; sleep 1; done
+          bash mcp/test-mcp.sh
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t colab-studio .
+      - name: Smoke test
+        run: |
+          docker run -d --name studio -p 127.0.0.1:8190:8190 colab-studio
+          for _ in $(seq 30); do curl -sf 127.0.0.1:8190/api/runtime && break; sleep 1; done
+          curl -sf 127.0.0.1:8190/ | grep -q '<div id="root">'
+          docker logs studio
