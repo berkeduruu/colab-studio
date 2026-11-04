@@ -60,9 +60,13 @@ jobs:
         run: |
           mkdir -p server/web/dist && echo '<!doctype html>' > server/web/dist/index.html && mkdir -p server/web/dist/assets
           export STUDIO_DATA=$(mktemp -d) STUDIO_PORT=8190 COLAB_BIN=/bin/false
-          (cd server && uv run -q --python 3.12 --with-requirements requirements.txt python app.py &)
+          cd server
+          uv run -q --python 3.12 --with-requirements requirements.txt python app.py &
+          studio=$!
+          # The studio must be stopped before the job ends: a running `uv run` holds uv's cache lock.
+          trap 'kill $studio; wait $studio || true' EXIT
           for _ in $(seq 30); do curl -sf 127.0.0.1:8190/api/runtime >/dev/null && break; sleep 1; done
-          bash mcp/test-mcp.sh
+          bash ../mcp/test-mcp.sh
 
   docker:
     runs-on: ubuntu-latest
