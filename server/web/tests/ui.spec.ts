@@ -385,7 +385,8 @@ test.describe("davranış", () => {
     await page.getByRole("button", { name: "L4 başlat" }).click();
     await expect(page.locator(".pill")).toHaveText("GPU açılıyor");
     await page.getByRole("button", { name: "Otomatik kapanma" }).click();
-    expect(api.requests.map((r) => `${r.method} ${r.path}`)).toEqual(expect.arrayContaining(["POST /api/runtime/start", "POST /api/runtime/toggle-auto"]));
+    // Tıklama, istek sahte sunucuya ulaşmadan döner: liste beklenerek denetlenir.
+    await expect.poll(() => api.requests.map((r) => `${r.method} ${r.path}`)).toEqual(expect.arrayContaining(["POST /api/runtime/start", "POST /api/runtime/toggle-auto"]));
     page.once("dialog", (d) => d.accept());
     await page.getByRole("button", { name: "Kapat" }).first().click();
     await expect(page.locator(".pill")).toHaveText("GPU kapalı");
