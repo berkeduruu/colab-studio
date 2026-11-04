@@ -494,6 +494,12 @@ if __name__ == "__main__":
             "or nginx with basic auth (deploy/setup-nginx.sh).",
             file=sys.stderr, flush=True,
         )
-    print(f"Colab Studio {(config.REPO_DIR / 'VERSION').read_text().strip()}: "
-          f"http://{'127.0.0.1' if config.HOST in ('0.0.0.0', '::') else config.HOST}:{config.PORT}/", flush=True)
+    version = (config.REPO_DIR / "VERSION").read_text().strip()
+    if os.environ.get("STUDIO_IN_DOCKER"):
+        # İçerideki port sabit (8190); kullanıcı docker-compose ile başka bir host portu yayınlamış olabilir.
+        print(f"Colab Studio {version}: listening on port {config.PORT} inside the container; "
+              "open the address published by docker compose (STUDIO_PORT in .env, default 8190)", flush=True)
+    else:
+        print(f"Colab Studio {version}: "
+              f"http://{'127.0.0.1' if config.HOST in ('0.0.0.0', '::') else config.HOST}:{config.PORT}/", flush=True)
     web.run_app(create_app(), host=config.HOST, port=config.PORT, print=None)
