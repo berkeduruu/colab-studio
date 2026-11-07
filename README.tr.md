@@ -119,6 +119,15 @@ Cevapları `.env`'e yazar ve Colab CLI'da Google girişini yaptırır: bir bağl
 bir tarayıcıda açıp onaylarsın, çıkan kodu terminale yapıştırırsın. Sonra <http://127.0.0.1:8190/>
 adresini aç ve bir istem gönder; ilk istek GPU'yu açar.
 
+Sunucuya ya da betikle mi kuruyorsun? Her sorunun bir bayrağı var, hiçbir şey sorulmaz:
+
+```bash
+HF_TOKEN=hf_... ./install.sh --yes --port 8200 --host 127.0.0.1
+```
+
+(`--host` `127.0.0.1` ya da `0.0.0.0` olur; token ortam değişkeninden okunur, böylece süreç listesinde görünmez.
+Terminal yoksa kurulum betiği hiçbir cevap beklemez.)
+
 Stüdyonun arka planda çalışması ve açılışta kendiliğinden başlaması için:
 
 ```bash
@@ -239,20 +248,25 @@ cd mcp && ./install.sh
 claude mcp add colab-studio -- node "$PWD/dist/index.js"
 ```
 
+Ya da kurulum betiğine yaptır: `./install.sh --mcp` MCP sunucusunu da derler (Node.js 22+) ve `claude mcp add` komutunu yazdırır.
 Uzak (SSH) kurulum ve araç listesi için [mcp/README.md](mcp/README.md).
 
 ## Güncelleme
 
 ```bash
-git pull
-rm -rf server/web/dist && ./install.sh     # arayüzü yeniden derler; .env ve models.toml korunur
-systemctl --user restart colab-studio      # ya da ./run.sh'i yeniden başlat / docker compose up -d --build
+./install.sh --update       # git pull, arayüzü yeniden derler; .env ve models.toml korunur
 ```
+
+Stüdyo servis olarak çalışıyorsa `--update` onu yeniden başlatır, ama yalnızca çalışan iş yokken (aksi halde
+söyler ve yeniden başlatmayı sana bırakır). `./run.sh` ile açtıysan kendin yeniden başlat. Docker:
+`git pull && docker compose up -d --build`.
 
 Node.js yoksa `install.sh`, `VERSION`'daki sürümün hazır arayüzünü indirir. Çektiğin kodda o sürümden
 yeni arayüz değişiklikleri varsa bunu söyler; uyumlu arayüzü derlemek için Node.js 20+ kur.
 
 ## Sorun giderme
+
+`./install.sh --doctor` araçları, `.env`'i, portu, Colab girişini ve servisi kontrol eder ve neyin düzeltileceğini söyler.
 
 | Belirti | Çözüm |
 | --- | --- |
@@ -265,6 +279,16 @@ yeni arayüz değişiklikleri varsa bunu söyler; uyumlu arayüzü derlemek içi
 
 Stüdyo yalnızca kendi açtığı Colab oturumunu (`STUDIO_SESSION`) kapatır. GPU açıkken stüdyo
 öldürüldüyse bir sonraki açılışta o runtime'ı kapatır.
+
+## Kaldırma
+
+```bash
+./install.sh --uninstall            # servisi, .venv'i ve derlenmiş arayüzü siler; verini ve .env'i silmeden önce sorar
+./install.sh --uninstall --purge    # sohbetleri, medyayı ve .env'i de sormadan siler
+```
+
+uv ve Colab CLI (`uv tool uninstall google-colab-cli`) olduğu gibi kalır. Docker: `docker compose down -v`
+(`-v` veri volume'unu da siler).
 
 ## Gizlilik ve güvenlik
 

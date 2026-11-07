@@ -4,6 +4,7 @@
 set -Eeuo pipefail
 cd "$(dirname "$0")"
 ./lint.sh
+deploy/test-scripts.sh
 cd server/web
 npm ci --silent
 npm run build --silent

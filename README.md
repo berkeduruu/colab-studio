@@ -120,6 +120,15 @@ writes them to `.env`, and signs the Colab CLI in to your Google account: it pri
 it in any browser, approve, and paste the code back. Then open <http://127.0.0.1:8190/> and send a
 prompt; the first one starts the GPU.
 
+Installing on a server or from a script? Every question has a flag, so nothing is asked:
+
+```bash
+HF_TOKEN=hf_... ./install.sh --yes --port 8200 --host 127.0.0.1
+```
+
+(`--host` is `127.0.0.1` or `0.0.0.0`; the token is read from the environment so it does not show up in
+the process list. Without a terminal the installer never waits for an answer.)
+
 To keep the studio running in the background and start it on boot:
 
 ```bash
@@ -241,20 +250,25 @@ cd mcp && ./install.sh
 claude mcp add colab-studio -- node "$PWD/dist/index.js"
 ```
 
+Or let the installer do it: `./install.sh --mcp` builds it too (Node.js 22+) and prints the `claude mcp add` command.
 See [mcp/README.md](mcp/README.md) for remote (SSH) setups and the tool list.
 
 ## Updating
 
 ```bash
-git pull
-rm -rf server/web/dist && ./install.sh     # rebuilds the UI, keeps your .env and models.toml
-systemctl --user restart colab-studio      # or restart ./run.sh / docker compose up -d --build
+./install.sh --update       # git pull, rebuild the UI, keeps your .env and models.toml
 ```
+
+If the studio runs as a service, `--update` restarts it, but only when no job is running (otherwise it
+tells you and leaves the restart to you). Started with `./run.sh`: restart it yourself. Docker:
+`git pull && docker compose up -d --build`.
 
 Without Node.js, `install.sh` downloads the prebuilt UI of the release in `VERSION`. If the code you
 pulled has newer UI changes than that release, it says so; install Node.js 20+ to build the matching UI.
 
 ## Troubleshooting
+
+`./install.sh --doctor` checks the tools, `.env`, the port, the Colab sign-in and the service, and says what to fix.
 
 | Symptom | Fix |
 | --- | --- |
@@ -267,6 +281,16 @@ pulled has newer UI changes than that release, it says so; install Node.js 20+ t
 
 The studio only ever releases the Colab session it created (`STUDIO_SESSION`). If it was killed
 while a GPU was running, it releases that runtime on its next start.
+
+## Uninstalling
+
+```bash
+./install.sh --uninstall            # removes the service, .venv and built UI; asks before deleting your data and .env
+./install.sh --uninstall --purge    # also deletes chats, media and .env without asking
+```
+
+uv and the Colab CLI (`uv tool uninstall google-colab-cli`) are left alone. Docker: `docker compose down -v`
+(`-v` also deletes the data volume).
 
 ## Privacy and security
 

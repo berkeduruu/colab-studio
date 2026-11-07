@@ -15,6 +15,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Lint
         run: ./lint.sh
+      - name: Shell scripts (install.sh options, doctor, uninstall)
+        run: deploy/test-scripts.sh
       - name: Build the UI (served by the API tests)
         working-directory: server/web
         run: npm ci && npm run build
