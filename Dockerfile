@@ -14,7 +14,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /usr/local/bin/uv
 ENV UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin UV_PYTHON_DOWNLOADS=never
-RUN uv tool install --python /usr/local/bin/python3.12 google-colab-cli
+# Sürüm install.sh'takiyle aynı olmalı (bir test denetler).
+RUN uv tool install --python /usr/local/bin/python3.12 google-colab-cli==0.7.5
 WORKDIR /app
 COPY server/requirements.txt server/requirements.txt
 RUN pip install --no-cache-dir -r server/requirements.txt

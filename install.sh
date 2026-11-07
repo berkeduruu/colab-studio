@@ -14,6 +14,9 @@ set -Eeuo pipefail
 cd "$(dirname "$0")"
 REPO=$(pwd)
 REPO_SLUG=${STUDIO_REPO:-berkeduruu/colab-studio}
+# Google'ın Colab CLI'ı sürüme sabit: giriş akışı ya da komut çıktıları değişirse stüdyo bozulur. Yükseltirken
+# Dockerfile'daki sürümle birlikte, gerçek bir GPU işiyle denenerek değiştirilir.
+COLAB_CLI_VERSION=0.7.5
 VERSION=$(cat VERSION)
 SERVICE=0
 YES=0
@@ -101,7 +104,7 @@ say "2/6 Google Colab CLI"
 if command -v colab >/dev/null; then
   note "found $(command -v colab)"
 else
-  uv tool install --python 3.12 google-colab-cli
+  uv tool install --python 3.12 "google-colab-cli==${COLAB_CLI_VERSION}"
 fi
 COLAB=$(command -v colab) || die "colab CLI is not on PATH after installing it"
 

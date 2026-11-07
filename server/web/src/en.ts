@@ -93,7 +93,7 @@ export const EN: Record<string, string> = {
   "iş iptal edildi, GPU kapatılıyor": "job cancelled, stopping GPU",
   "1/5 İndirme ortamı hazırlanıyor": "1/5 Preparing the download environment",
   "2/5 ComfyUI ve eklentiler indiriliyor": "2/5 Downloading ComfyUI and plugins",
-  "3/5 ComfyUI ve ses paketleri kuruluyor": "3/5 Installing ComfyUI and audio packages",
+  "3/5 Python ortamı ve paketler kuruluyor": "3/5 Installing the Python environment and packages",
   "4/5 Qwen3-TTS ortamı kuruluyor": "4/5 Installing the Qwen3-TTS environment",
   "İptal edildi": "Cancelled",
   "Servis yeniden başladı": "The service restarted",

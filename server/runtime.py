@@ -30,6 +30,9 @@ OWNED_FILE = DATA_DIR / "owned_endpoints.json"  # stüdyonun açtığı GPU runt
 SSH_DIR = DATA_DIR / "ssh"
 SSH_CONF = SSH_DIR / "config"
 SSH_KEY = SSH_DIR / "id_ed25519"
+# Unix soket yolu en çok ~104 bayt olabilir (ssh kendi soneki için de yer ister). STUDIO_DATA uzunsa
+# SSH_DIR altındaki yol aşılıyor ve ssh açılmıyordu: soket her zaman kısa bir dizine konur, adı %C (özet).
+SSH_SOCKET_DIR = Path(f"/tmp/colab-studio-{os.getuid()}")
 SSH = ["ssh", "-F", str(SSH_CONF)]
 POLL_SECONDS = 30
 METRICS_SECONDS = 5
@@ -49,7 +52,7 @@ def ssh_conf_text():
   UserKnownHostsFile /dev/null
   LogLevel ERROR
   ControlMaster auto
-  ControlPath {SSH_DIR}/cm
+  ControlPath {SSH_SOCKET_DIR}/%C
   ControlPersist yes
   ServerAliveInterval 15
   ServerAliveCountMax 4
@@ -78,6 +81,7 @@ def preflight():
 async def ensure_ssh_key():
     """Stüdyoya ait SSH anahtarı (kullanıcının ~/.ssh'ına dokunulmaz); yoksa üretilir."""
     SSH_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    SSH_SOCKET_DIR.mkdir(exist_ok=True, mode=0o700)
     if not SSH_KEY.exists():
         await run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "colab-studio", "-f", str(SSH_KEY), timeout=30)
 
@@ -297,7 +301,10 @@ def start(pack="image"):
         _start_task = asyncio.create_task(_start())
 
 
-COMFY_PROCESS = "pgrep -f '^python[0-9.]* main[.]py' >/dev/null && echo alive || echo dead"
+# ComfyUI, kurulum betiğinin venv'indeki python ile başlar ("/content/venv/bin/python main.py ..."). Köşeli
+# parantezli "main[.]py": pgrep'i çalıştıran kabuğun kendi komut satırı desene uymaz.
+COMFY_PGREP = "(^|/)python[0-9.]* main[.]py"
+COMFY_PROCESS = f"pgrep -f '{COMFY_PGREP}' >/dev/null && echo alive || echo dead"
 
 
 async def wait_comfy_ready():
@@ -624,7 +631,7 @@ async def _watch_once(http, has_pending_jobs, on_credits):
         # Büyük model yüklerken ComfyUI saniyelerce yanıt vermeyebilir; süreç
         # yaşıyorsa meşgul sayılır, yalnızca süreç ya da bağlantı yoksa kapatılır.
         try:
-            await run(*SSH, "colab", "pgrep -f '^python[0-9.]* main[.]py'", timeout=20, quiet=True)
+            await run(*SSH, "colab", f"pgrep -f '{COMFY_PGREP}'", timeout=20, quiet=True)
             state["last_busy"] = time.time()
             # Port kapalıysa (bağlantı reddedildi) SSH ana bağlantısı kopmuş, sonraki ssh
             # komutu yeni ana bağlantıyı yönlendirmesiz açmıştır: yönlendirme yeniden kurulur.

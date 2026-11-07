@@ -1,0 +1,47 @@
+# Constraints from the Colab GPU image the studio was last verified on (torch 2.11.0, Python 3.13):
+# googlecolab/backend-info pip-freeze.gpu.txt at commit b195565c748282fa634ef3225320e7d50b65ac40 (2026-10-29).
+# Only the audio/ML packages whose versions matter are listed; everything else resolves freely.
+# Packages that audio_requirements.txt pins are not repeated here (both files are passed to uv as constraints).
+absl-py==2.0.0
+accelerate==1.15.0
+aiohttp==3.14.5
+audioop-lts==0.2.2
+cffi==2.1.1
+cryptography==50.0.2
+Cython==3.0.12
+docstring_parser==0.18.0
+einops==0.8.2
+flatbuffers==25.12.19
+frozendict==2.4.7
+google-cloud-storage==3.17.1
+httpx==0.28.1
+importlib_metadata==10.1.0
+inflect==7.6.0
+joblib==1.6.0
+librosa==0.11.0
+llvmlite==0.46.0
+matplotlib==3.10.0
+ml_dtypes==0.6.0
+more-itertools==10.8.0
+nltk==3.9.1
+numba==0.64.0
+numpy==2.4.6
+pillow==11.3.0
+platformdirs==4.14.0
+protobuf==6.33.6
+psutil==5.9.5
+pydub==0.25.1
+python-dateutil==2.9.0.post0
+PyYAML==6.0.3
+safetensors==0.8.0
+scikit-learn==1.6.1
+scipy==1.16.3
+sentencepiece==0.2.2
+six==1.17.0
+soundfile==0.14.0
+tensorboard==2.21.0
+termcolor==3.3.0
+tiktoken==0.14.0
+wcwidth==0.9.4
+websockets==15.0.1
+opencv-python-headless==5.0.0.93

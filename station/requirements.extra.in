@@ -1,0 +1,46 @@
+# What the isolated Colab environment needs on top of ComfyUI's own requirements.txt (lock.sh adds that
+# one, without its torch lines). Regenerate requirements.lock with ./lock.sh after any change here.
+#
+# The torch family is pinned to the build the studio was verified with. Keep it in sync with
+# TORCH_VERSION in runtime_setup.sh and with the wheels archive (sageattention is compiled against it).
+torch==2.11.0
+torchvision==0.26.0
+torchaudio==2.11.0
+torchcodec==0.11.0
+# Declared dependencies of the audio packages in audio_requirements.txt (those are installed with
+# --no-deps, so everything they need must be listed here). Colab's image used to provide these.
+absl-py
+accelerate
+audioop-lts
+cffi
+cryptography
+cython
+docstring-parser
+flatbuffers
+frozendict
+google-cloud-storage
+httpx
+importlib-metadata
+inflect
+ipython
+joblib
+librosa
+llvmlite
+matplotlib
+ml-dtypes
+more-itertools
+nltk
+numba
+opencv-python-headless
+platformdirs
+protobuf
+pydub
+python-dateutil
+six
+soundfile
+tensorboard
+tensorboardx
+termcolor
+tiktoken
+wcwidth
+websockets

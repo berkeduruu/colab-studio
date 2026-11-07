@@ -333,7 +333,7 @@ def test_setup_script_is_rerunnable_in_the_same_runtime():
     """Aynı runtime'da yeniden koşma: var olan venv'ler --clear ile, ComfyUI ağacı silinerek kurulur."""
     setup = _setup_text()
     assert "uv venv -q --clear /content/hfenv" in setup
-    assert 'uv venv -q --clear "${SHARED_RT}"' in setup
+    assert 'uv venv -q --clear --python "${VENV}/bin/python" "${SHARED_RT}"' in setup
     assert 'rm -rf "${COMFY}"' in setup
     # .pth yolu python'dan türetilir: sabit lib/python3.13 sürüm değişince sessizce yanlış yere yazardı.
     assert 'sysconfig.get_paths()["purelib"]' in setup
