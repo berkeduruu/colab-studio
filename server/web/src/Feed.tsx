@@ -1,5 +1,5 @@
 import { Box, Copy, Download, Loader2, Lock, Pencil, RefreshCw, X } from "lucide-react";
-import { mediaUrl, type Job, type Mode, type RuntimeState } from "./api";
+import { isDone, isFailed, isPending, mediaUrl, type Job, type Mode, type RuntimeState } from "./api";
 import { facesLabel, MODEL3D_TEXTURES } from "./Chips";
 import { isAudio } from "./Composer";
 import { downloadText, formatDuration, pct } from "./format";
@@ -192,7 +192,7 @@ export function Feed({ mode, jobs, rt, onSuggestion, onRetry, onEdit, onReusePro
             {job.prompt}
           </div>
           <div className="result">
-            {job.status === "done" && (
+            {isDone(job) && (
               <>
                 {job.kind === "transcribe" ? (
                   <div className="transcript">
@@ -249,7 +249,7 @@ export function Feed({ mode, jobs, rt, onSuggestion, onRetry, onEdit, onReusePro
                 <div className="meta">{meta(job)}</div>
               </>
             )}
-            {job.status === "error" && (
+            {isFailed(job) && (
               <>
                 <div className="error-text" role="alert">{tServer(job.error)}</div>
                 <div className="actions">
@@ -257,7 +257,7 @@ export function Feed({ mode, jobs, rt, onSuggestion, onRetry, onEdit, onReusePro
                 </div>
               </>
             )}
-            {job.status !== "done" && job.status !== "error" && (
+            {isPending(job) && (
               <>
                 <div className="status">
                   <Loader2 size={15} className="spin" /> <span className="status-text" role="status">{statusText(job, rt)}</span>

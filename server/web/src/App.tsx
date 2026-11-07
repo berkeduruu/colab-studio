@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  api, ApiError, type ImageParams, type Job, type Mode, type Model3DParams, type MusicParams, type Preset, type RuntimeState, type SpeechParams, type Thread,
+  api, ApiError, isDone, isFailed, isPending, type ImageParams, type Job, type Mode, type Model3DParams, type MusicParams, type Preset, type RuntimeState, type SpeechParams, type Thread,
   type ThreadDetail, type TranscribeParams, type VideoParams,
 } from "./api";
 import {
@@ -30,8 +30,6 @@ function flushSaves() {
     api.saveSetting(key, value).catch(() => {});
   }
 }
-
-const isPending = (j: Job) => j.status !== "done" && j.status !== "error";
 
 /** Açılır katman (görsel büyütme, kayıtlar): Esc kapatır, açılırken odak katmana geçer, kapanınca
  * odağı açan öğeye geri verir. */
@@ -265,7 +263,7 @@ export default function App() {
   // ("kaplanı kaldır" gibi bir devam mesajı onu düzenler). Kullanıcının kendi eklediği dosyalara
   // dokunulmaz; kaldırılırsa aynı sonuç için bir daha eklenmez.
   const context = useRef<{ job: string | null; name: string | null }>({ job: null, name: null });
-  const lastImage = [...(thread?.jobs ?? [])].reverse().find((j) => j.kind === "image" && j.status === "done" && j.outputs.length > 0);
+  const lastImage = [...(thread?.jobs ?? [])].reverse().find((j) => j.kind === "image" && isDone(j) && j.outputs.length > 0);
   useEffect(() => {
     context.current = { job: null, name: null };
     setAttachments(carry.current);
@@ -341,7 +339,7 @@ export default function App() {
           if (e instanceof ApiError && e.status === 404) throw new Error(t("İstem geliştirme işi sunucuda bulunamadı; tekrar dene."));
         }
       }
-      if (job.status === "error") throw new Error(job.error ? tServer(job.error) : t("İstem geliştirilemedi"));
+      if (isFailed(job)) throw new Error(job.error ? tServer(job.error) : t("İstem geliştirilemedi"));
       const result = job.text;
       // Kullanıcı bu arada istemi değiştirdiyse sonucu yazıp onu ezme.
       if (result) setPrompt((cur) => (cur.trim() === typed || !cur.trim() ? result : cur));
