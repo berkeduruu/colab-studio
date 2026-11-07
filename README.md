@@ -127,6 +127,11 @@ To keep the studio running in the background and start it on boot:
 systemctl --user status colab-studio       # logs: journalctl --user -u colab-studio -f
 ```
 
+A user service stops when you log out unless *lingering* is enabled for your account. The installer
+runs `loginctl enable-linger` for you; if that needs root it prints a warning, and you run
+`sudo loginctl enable-linger $USER` yourself (important on servers, where closing the SSH session
+would otherwise stop the studio).
+
 ## Opening it from other devices
 
 The studio has **no login of its own**. Anyone who can open the page can start the GPU and spend
@@ -138,6 +143,10 @@ your compute units, so pick one of these:
 | A server, just for you | SSH tunnel: `ssh -L 8190:127.0.0.1:8190 my-server`, then <http://127.0.0.1:8190/> |
 | A server, on a trusted network | `STUDIO_HOST=0.0.0.0` in `.env`, then `http://<server-ip>:8190/` (no password: use a firewall) |
 | A server with a domain name | `sudo ./deploy/setup-nginx.sh studio.example.com`: HTTPS (Let's Encrypt) and a password via nginx |
+
+`setup-nginx.sh` asks for the username and password on the terminal. For scripts or CI set `STUDIO_USER` and
+`STUDIO_PASSWORD` instead (`sudo STUDIO_PASSWORD=... ./deploy/setup-nginx.sh studio.example.com`);
+with neither a terminal nor those variables it uses the user `studio` and prints a generated password.
 
 For the nginx option keep `STUDIO_HOST=127.0.0.1`. Any DNS name pointing at the server works,
 including free ones such as `<ip-with-dashes>.sslip.io`. The script also adds the domain to
@@ -151,6 +160,8 @@ cp .env.example .env                                # optional: port, HF token, 
 docker compose run --rm studio colab usage          # one-time Google sign-in (kept in a volume)
 docker compose up -d                                # http://127.0.0.1:8190/
 ```
+
+The first `docker compose run` / `up` builds the image automatically (about a minute); later starts reuse it.
 
 Needs Docker Compose v2.24 or newer (`docker compose version`). The port is published on `127.0.0.1` unless `STUDIO_HOST=0.0.0.0` is set in `.env`. Chats and media
 live in the `studio-data` volume. A custom `models.toml` can be mounted (see `docker-compose.yml`).
@@ -270,7 +281,7 @@ while a GPU was running, it releases that runtime on its next start.
 ## Development
 
 ```bash
-./test.sh          # lint + Playwright UI tests (mocked API) + pytest; no GPU needed
+./test.sh          # lint + Playwright UI tests (mocked API) + pytest; no GPU needed (installs Chromium on first run)
 python3 server/tests/gpu_smoke.py   # one job per mode on a real GPU (spends compute units)
 ```
 
@@ -284,6 +295,9 @@ python3 server/tests/gpu_smoke.py   # one job per mode on a real GPU (spends com
 | `station/` | runs on the GPU: setup script, model downloader, model catalog |
 | `mcp/` | MCP server |
 | `deploy/` | systemd service and nginx templates |
+
+The API's status and error messages are in Turkish; the web UI translates them (`src/en.ts`), so
+the UI is English by default. Add the English text there when you add a new server message.
 
 Code comments are in Turkish; contributions in English or Turkish are welcome.
 

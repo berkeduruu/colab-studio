@@ -3,6 +3,7 @@
 # a domain name pointing at it (any DNS name works, e.g. a free <ip>.sslip.io name).
 #
 #   sudo ./deploy/setup-nginx.sh studio.example.com [you@example.com]
+#   (optional: STUDIO_USER and STUDIO_PASSWORD in the environment instead of the questions)
 #
 # Debian/Ubuntu (apt). Ports 80 and 443 must be reachable from the internet for the certificate.
 # Keep STUDIO_HOST=127.0.0.1 in .env so the studio itself is only reachable through nginx.
@@ -51,14 +52,19 @@ install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy
 printf '#!/bin/sh\nsystemctl reload nginx\n' > /etc/letsencrypt/renewal-hooks/deploy/20-nginx.sh
 chmod 755 /etc/letsencrypt/renewal-hooks/deploy/20-nginx.sh
 
-# 2. Password
+# 2. Password. STUDIO_USER / STUDIO_PASSWORD skip the questions (pass them through sudo:
+# sudo STUDIO_PASSWORD=... ./deploy/setup-nginx.sh ...). Without them the script asks on the
+# terminal; with no terminal (pipe, CI) it uses the user "studio" and generates a password.
 if [[ ! -f ${HTPASSWD} ]]; then
-  read -r -p "Username for the studio [studio]: " user </dev/tty || true
+  user=${STUDIO_USER:-}
+  pass=${STUDIO_PASSWORD:-}
+  if (: </dev/tty) 2>/dev/null; then
+    [[ -n ${user} ]] || read -r -p "Username for the studio [studio]: " user </dev/tty
+    [[ -n ${pass} ]] || { read -r -s -p "Password (Enter = generate one): " pass </dev/tty; echo; }
+  fi
   user=${user:-studio}
-  read -r -s -p "Password (Enter = generate one): " pass </dev/tty || true
-  echo
   generated=0
-  if [[ -z ${pass:-} ]]; then pass=$(openssl rand -base64 18); generated=1; fi
+  if [[ -z ${pass} ]]; then pass=$(openssl rand -base64 18); generated=1; fi
   htpasswd -bcB "${HTPASSWD}" "${user}" "${pass}" >/dev/null
   chown root:www-data "${HTPASSWD}"
   chmod 640 "${HTPASSWD}"

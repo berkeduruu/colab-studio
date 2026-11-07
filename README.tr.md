@@ -126,6 +126,10 @@ Stüdyonun arka planda çalışması ve açılışta kendiliğinden başlaması 
 systemctl --user status colab-studio       # kayıtlar: journalctl --user -u colab-studio -f
 ```
 
+Kullanıcı servisi, hesabında *lingering* açık değilse oturumu kapattığında durur. Kurulum betiği
+`loginctl enable-linger` komutunu kendisi dener; root gerekirse uyarı basar, sen de
+`sudo loginctl enable-linger $USER` çalıştırırsın (sunucuda önemli: SSH oturumunu kapatınca stüdyo
+otomatik durmasın).
 ## Başka cihazlardan açmak
 
 Stüdyonun **kendi giriş ekranı yok**. Sayfayı açabilen herkes GPU'yu başlatıp senin kredini
@@ -137,6 +141,10 @@ harcayabilir. Bu yüzden şunlardan birini seç:
 | Sunucuda, yalnızca sen | SSH tüneli: `ssh -L 8190:127.0.0.1:8190 sunucum`, sonra <http://127.0.0.1:8190/> |
 | Sunucuda, güvendiğin bir ağda | `.env`'de `STUDIO_HOST=0.0.0.0`, sonra `http://<sunucu-ip>:8190/` (şifre yok: güvenlik duvarı kullan) |
 | Alan adı olan bir sunucuda | `sudo ./deploy/setup-nginx.sh studio.ornek.com`: nginx ile HTTPS (Let's Encrypt) ve şifre |
+
+`setup-nginx.sh` kullanıcı adı ve parolayı terminalden sorar. Betik ya da CI için bunun yerine
+`STUDIO_USER` ve `STUDIO_PASSWORD` ver (`sudo STUDIO_PASSWORD=... ./deploy/setup-nginx.sh studio.ornek.com`);
+terminal de bu değişkenler de yoksa `studio` kullanıcısı ve üretilmiş bir parola kullanılır (parola ekrana basılır).
 
 nginx seçeneğinde `STUDIO_HOST=127.0.0.1` kalmalı. Sunucuyu gösteren her DNS adı olur;
 `<tireli-ip>.sslip.io` gibi ücretsiz adlar da. Betik alan adını `.env`'deki `STUDIO_ALLOWED_HOSTS`'a
@@ -150,6 +158,8 @@ cp .env.example .env                                # isteğe bağlı: port, HF 
 docker compose run --rm studio colab usage          # tek seferlik Google girişi (bir volume'da saklanır)
 docker compose up -d                                # http://127.0.0.1:8190/
 ```
+
+İlk `docker compose run` / `up` imajı kendiliğinden build eder (yaklaşık bir dakika); sonraki açılışlar hazır imajı kullanır.
 
 Docker Compose v2.24 ya da üstü gerekir (`docker compose version`). `.env`'de `STUDIO_HOST=0.0.0.0` yoksa port yalnızca `127.0.0.1`'de yayımlanır. Sohbetler ve medya
 `studio-data` volume'unda durur. Özel bir `models.toml` bağlanabilir (bkz. `docker-compose.yml`).
@@ -269,7 +279,7 @@ Stüdyo yalnızca kendi açtığı Colab oturumunu (`STUDIO_SESSION`) kapatır. 
 ## Geliştirme
 
 ```bash
-./test.sh          # lint + Playwright arayüz testleri (sahte API) + pytest; GPU gerekmez
+./test.sh          # lint + Playwright arayüz testleri (sahte API) + pytest; GPU gerekmez (ilk çalıştırmada Chromium'u kurar)
 python3 server/tests/gpu_smoke.py   # gerçek GPU'da her moddan bir iş (kredi harcar)
 ```
 
@@ -283,6 +293,9 @@ python3 server/tests/gpu_smoke.py   # gerçek GPU'da her moddan bir iş (kredi h
 | `station/` | GPU'da çalışır: kurulum betiği, model indirici, model kataloğu |
 | `mcp/` | MCP sunucusu |
 | `deploy/` | systemd servisi ve nginx şablonları |
+
+API'nin durum ve hata metinleri Türkçedir; web arayüzü bunları çevirir (`src/en.ts`), bu yüzden arayüz
+varsayılan olarak İngilizcedir. Yeni bir sunucu mesajı eklediğinde İngilizcesini oraya da ekle.
 
 ## Lisans
 

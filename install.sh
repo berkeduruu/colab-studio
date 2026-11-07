@@ -142,7 +142,8 @@ if [[ ${SERVICE} == 1 ]]; then
   systemctl --user enable -q colab-studio
   systemctl --user restart colab-studio
   # Without lingering a user service stops when you log out (e.g. closing the SSH session on a server).
-  loginctl enable-linger "$USER" 2>/dev/null || note "run 'sudo loginctl enable-linger $USER' so the studio keeps running after you log out"
+  me=${USER:-$(id -un)}  # USER docker exec / cron / su altında tanımsız olabilir
+  loginctl enable-linger "${me}" 2>/dev/null || note "run 'sudo loginctl enable-linger ${me}' so the studio keeps running after you log out"
   note "running: systemctl --user status colab-studio · logs: journalctl --user -u colab-studio -f"
 fi
 
