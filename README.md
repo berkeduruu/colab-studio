@@ -16,20 +16,13 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/berkeduruu/colab-studio?style=flat-square&color=8b5cf6" alt="License: AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/GPU-Colab%20L4-F9AB00?style=flat-square&logo=googlecolab&logoColor=white" alt="Google Colab L4">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20WSL2%20%7C%20Docker-555?style=flat-square&logo=linux&logoColor=white" alt="Linux, WSL2, Docker">
-  <br>
-  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12">
-  <img src="https://img.shields.io/badge/React-UI-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React">
-  <img src="https://img.shields.io/badge/ComfyUI-workflows-222?style=flat-square" alt="ComfyUI">
-  <img src="https://img.shields.io/badge/MCP-Claude%20Code-D97757?style=flat-square&logo=anthropic&logoColor=white" alt="MCP server for Claude Code">
-  <a href="https://github.com/berkeduruu/colab-studio/stargazers"><img src="https://img.shields.io/github/stars/berkeduruu/colab-studio?style=flat-square&color=f5c518" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
-  <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#install"><b>Install</b></a> ·
   <a href="#features">Features</a> ·
-  <a href="#screenshots">Screenshots</a> ·
-  <a href="#models">Models</a> ·
   <a href="#docker">Docker</a> ·
+  <a href="docs/models.md">Models</a> ·
   <a href="#using-it-from-claude-code-mcp">MCP</a> ·
   <a href="README.tr.md">Türkçe</a> ·
   <a href="https://berkeduruu.github.io/colab-studio/">Website</a>
@@ -38,6 +31,120 @@
 <p align="center">
   <img src="docs/screenshots/hero.png" width="900" alt="Colab Studio web UI: image mode with the settings panel open">
 </p>
+
+## Install
+
+Pick the way that fits where you run it:
+
+| You want to run it on | Use | You need |
+| --- | --- | --- |
+| A Linux computer or server | [the installer](#installer) (`./install.sh`) | `curl`, `ssh`, `tar`, `python3` |
+| Any system with Docker | [Docker](#docker) | Docker Compose v2.24 or newer |
+| Windows | [Docker](#docker), or [WSL2](https://learn.microsoft.com/windows/wsl/install) with Ubuntu and then [the installer](#installer) inside it | |
+| A server that others open by a domain name | either of the above, then [nginx + HTTPS + password](#opening-it-from-other-devices) | a domain pointing at the server |
+
+Whichever you pick, you also need a **Google account with Colab compute units** (Colab Pro, Pro+ or
+pay-as-you-go; the free tier does not offer L4 GPUs). An L4 consumes compute units for every hour it
+runs; the sidebar shows your balance, the hourly rate and how long it will last. Linux and WSL2 are the
+supported systems; macOS is untested, and Docker on Windows or macOS has not been tried.
+
+### Installer
+
+```bash
+git clone https://github.com/berkeduruu/colab-studio.git
+cd colab-studio
+./install.sh
+./run.sh
+```
+
+It asks three questions (who may open the UI, the port, an optional Hugging Face token), writes them
+to `.env`, and offers the [Google sign-in](#google-sign-in-once). It installs everything else it
+needs (uv, Python 3.12, the Colab CLI); Node.js 20+ is optional: without it a prebuilt UI is
+downloaded. Then open <http://127.0.0.1:8190/> and send a prompt; the first one starts the GPU.
+
+A free [Hugging Face token](https://huggingface.co/settings/tokens) (read access) is optional: models
+download without one, but anonymous downloads are slower and can be rate-limited.
+
+Installing on a server or from a script? Every question has a flag, so nothing is asked:
+
+```bash
+HF_TOKEN=hf_... ./install.sh --yes --port 8200 --host 127.0.0.1
+```
+
+(`--host` is `127.0.0.1` or `0.0.0.0`; the token is read from the environment so it does not show up in
+the process list. Without a terminal the installer never waits for an answer.)
+
+To keep the studio running in the background and start it on boot:
+
+```bash
+./install.sh --service
+systemctl --user status colab-studio       # logs: journalctl --user -u colab-studio -f
+```
+
+A user service stops when you log out unless *lingering* is enabled for your account. The installer
+runs `loginctl enable-linger` for you; if that needs root it prints a warning, and you run
+`sudo loginctl enable-linger $USER` yourself (important on servers, where closing the SSH session
+would otherwise stop the studio).
+
+### Docker
+
+```bash
+docker compose run --rm studio colab usage          # one-time Google sign-in, see below
+docker compose up -d                                # http://127.0.0.1:8190/
+```
+
+The first command builds the image (about a minute); later starts reuse it. Chats and media live in
+the `studio-data` volume and the sign-in in the `colab-login` volume.
+
+The port is published on `127.0.0.1` (this computer only). To change the port, set a Hugging Face
+token or open the studio to other devices (`STUDIO_HOST=0.0.0.0`, no password: see
+[below](#opening-it-from-other-devices)), copy `.env.example` to `.env` and edit it **before** the
+first `docker compose up`. Restart with `docker compose up -d` after later changes. A custom
+`models.toml` can be mounted (see `docker-compose.yml`).
+
+### Google sign-in (once)
+
+The studio starts and stops your GPU through Google's Colab CLI, which needs to be signed in to your
+Google account once. It prints a link: open it in any browser, approve, and paste the code back.
+
+| How you installed | Command |
+| --- | --- |
+| Installer | `./install.sh` offers it at the end (skipped when there is no terminal) |
+| Later, or if you skipped it | `colab usage` |
+| Docker | `docker compose run --rm studio colab usage` |
+
+You can skip it and do it later: the studio then shows "colab CLI is not signed in" when you start
+the GPU. Sign in, start the GPU again; no restart is needed. The sign-in is kept in
+`~/.config/colab-cli` (Docker: the `colab-login` volume) and stays on your machine.
+
+## Opening it from other devices
+
+The studio has **no login of its own**. Anyone who can open the page can start the GPU and spend
+your compute units, so pick one of these:
+
+| Where it runs | How to open it |
+| --- | --- |
+| Your own computer | <http://127.0.0.1:8190/> (default, `STUDIO_HOST=127.0.0.1`) |
+| A server, just for you | SSH tunnel: `ssh -L 8190:127.0.0.1:8190 my-server`, then <http://127.0.0.1:8190/> |
+| A server, on a trusted network | `STUDIO_HOST=0.0.0.0` in `.env`, then `http://<server-ip>:8190/` (no password: use a firewall) |
+| A server with a domain name | `sudo ./deploy/setup-nginx.sh studio.example.com`: HTTPS (Let's Encrypt) and a password via nginx |
+
+Opening it by IP address or `localhost` needs nothing more. **Only if you open it by a domain name**
+(for example behind nginx) must that name be listed in `STUDIO_ALLOWED_HOSTS` in `.env`; otherwise
+the studio answers 403. This blocks DNS rebinding attacks. `setup-nginx.sh` adds its domain for you;
+with your own reverse proxy, add the name yourself and restart.
+
+About `setup-nginx.sh`:
+
+- It is written for **Debian/Ubuntu**: it installs nginx, certbot and apache2-utils with apt and uses
+  `/etc/nginx/sites-available`. On other systems use your own reverse proxy;
+  [`deploy/nginx.conf.template`](deploy/nginx.conf.template) is a starting point.
+- Ports **80 and 443** must be reachable from the internet (Let's Encrypt checks the domain), and
+  `STUDIO_HOST` must stay `127.0.0.1` so the studio is only reachable through nginx.
+- Any DNS name pointing at the server works, including free ones such as `<ip-with-dashes>.sslip.io`.
+- It asks for the username and password on the terminal. For scripts or CI set `STUDIO_USER` and
+  `STUDIO_PASSWORD` instead (`sudo STUDIO_PASSWORD=... ./deploy/setup-nginx.sh studio.example.com`);
+  with neither a terminal nor those variables it uses the user `studio` and prints a generated password.
 
 ## Features
 
@@ -55,7 +162,7 @@
   released. The sidebar shows your compute-unit balance, hourly rate and how long it will last.
 - **Your data stays with you.** Chats and results are copied to your own machine and survive after
   the GPU is gone. No third-party service besides Colab and Hugging Face.
-- **Swap any model** with a compatible one from Hugging Face by editing one TOML file ([Models](#models)).
+- **Swap any model** with a compatible one from Hugging Face by editing one TOML file ([Models](docs/models.md)).
 - **Queue, progress and ETAs** for every job, measured on the L4, including GPU start and model downloads.
 - **Bilingual UI** (English, Turkish), works on phones too.
 - **One-command install** (`./install.sh`), **Docker**, optional **nginx + HTTPS + password**.
@@ -93,88 +200,6 @@ flowchart LR
    after the GPU is released.
 3. After 15 idle minutes (configurable) the runtime is released, so it stops using compute units.
 
-## Requirements
-
-- **Linux** (or **WSL2** on Windows). macOS is untested.
-- A **Google account with Colab compute units** (Colab Pro, Pro+ or pay-as-you-go). The free tier
-  does not offer L4 GPUs. An L4 consumes compute units for every hour it runs; the sidebar shows
-  your balance, the hourly rate and how long it will last.
-- `curl`, `ssh`, `tar` and `python3` (`sudo apt install curl openssh-client tar python3`).
-  Everything else (uv, Python 3.12, the Colab CLI) is installed by `install.sh`.
-- Optional: Node.js 20+ to build the web UI locally (otherwise a prebuilt copy is downloaded).
-  The MCP server needs Node.js 22+.
-- Optional: a free [Hugging Face token](https://huggingface.co/settings/tokens) (read access).
-  Models download without one, but anonymous downloads are slower and can be rate-limited.
-
-## Quick start
-
-```bash
-git clone https://github.com/berkeduruu/colab-studio.git
-cd colab-studio
-./install.sh
-./run.sh
-```
-
-`install.sh` asks three questions (who may open the UI, the port, an optional Hugging Face token),
-writes them to `.env`, and signs the Colab CLI in to your Google account: it prints a link, you open
-it in any browser, approve, and paste the code back. Then open <http://127.0.0.1:8190/> and send a
-prompt; the first one starts the GPU.
-
-Installing on a server or from a script? Every question has a flag, so nothing is asked:
-
-```bash
-HF_TOKEN=hf_... ./install.sh --yes --port 8200 --host 127.0.0.1
-```
-
-(`--host` is `127.0.0.1` or `0.0.0.0`; the token is read from the environment so it does not show up in
-the process list. Without a terminal the installer never waits for an answer.)
-
-To keep the studio running in the background and start it on boot:
-
-```bash
-./install.sh --service
-systemctl --user status colab-studio       # logs: journalctl --user -u colab-studio -f
-```
-
-A user service stops when you log out unless *lingering* is enabled for your account. The installer
-runs `loginctl enable-linger` for you; if that needs root it prints a warning, and you run
-`sudo loginctl enable-linger $USER` yourself (important on servers, where closing the SSH session
-would otherwise stop the studio).
-
-## Opening it from other devices
-
-The studio has **no login of its own**. Anyone who can open the page can start the GPU and spend
-your compute units, so pick one of these:
-
-| Where it runs | How to open it |
-| --- | --- |
-| Your own computer | <http://127.0.0.1:8190/> (default, `STUDIO_HOST=127.0.0.1`) |
-| A server, just for you | SSH tunnel: `ssh -L 8190:127.0.0.1:8190 my-server`, then <http://127.0.0.1:8190/> |
-| A server, on a trusted network | `STUDIO_HOST=0.0.0.0` in `.env`, then `http://<server-ip>:8190/` (no password: use a firewall) |
-| A server with a domain name | `sudo ./deploy/setup-nginx.sh studio.example.com`: HTTPS (Let's Encrypt) and a password via nginx |
-
-`setup-nginx.sh` asks for the username and password on the terminal. For scripts or CI set `STUDIO_USER` and
-`STUDIO_PASSWORD` instead (`sudo STUDIO_PASSWORD=... ./deploy/setup-nginx.sh studio.example.com`);
-with neither a terminal nor those variables it uses the user `studio` and prints a generated password.
-
-For the nginx option keep `STUDIO_HOST=127.0.0.1`. Any DNS name pointing at the server works,
-including free ones such as `<ip-with-dashes>.sslip.io`. The script also adds the domain to
-`STUDIO_ALLOWED_HOSTS` in `.env`: the studio only answers to IP addresses, `localhost` and the names
-listed there. If you use your own reverse proxy, add its domain there yourself.
-
-## Docker
-
-```bash
-cp .env.example .env                                # optional: port, HF token, ...
-docker compose run --rm studio colab usage          # one-time Google sign-in (kept in a volume)
-docker compose up -d                                # http://127.0.0.1:8190/
-```
-
-The first `docker compose run` / `up` builds the image automatically (about a minute); later starts reuse it.
-
-Needs Docker Compose v2.24 or newer (`docker compose version`). The port is published on `127.0.0.1` unless `STUDIO_HOST=0.0.0.0` is set in `.env`. Chats and media
-live in the `studio-data` volume. A custom `models.toml` can be mounted (see `docker-compose.yml`).
-
 ## Configuration
 
 All settings live in `.env` (created from [`.env.example`](.env.example)). Restart after changes
@@ -188,70 +213,11 @@ All settings live in `.env` (created from [`.env.example`](.env.example)). Resta
 | `HF_TOKEN` | empty | Hugging Face read token; needed only for gated repos, recommended against rate limits. |
 | `STUDIO_IDLE_MINUTES` | `15` | Release the GPU after this many idle minutes (can also be toggled in the UI). |
 | `STUDIO_DATA` | `~/.local/share/colab-studio` | Chats, media, learned timings and the studio's own SSH key. |
-| `STUDIO_MODELS` | `./models.toml` if present, else `station/models.default.toml` | Model catalog. |
+| `STUDIO_MODELS` | `./models.toml` if present, else `station/models.default.toml` | Model catalog, see [Models](docs/models.md). |
 | `COLAB_BIN` | `colab` on `PATH` | Path to the Colab CLI. |
 | `STUDIO_SESSION` | `studio` | Name of the Colab session the studio owns; your other sessions are never touched. |
 
 Only the L4 GPU is supported: the workflows, VRAM budgets and time estimates were all measured on it.
-
-## Models
-
-Which files are downloaded, and which file fills each slot of each ComfyUI workflow, is defined in
-[`station/models.default.toml`](station/models.default.toml). To change a model:
-
-```bash
-cp station/models.default.toml models.toml   # git-ignored, survives updates
-# edit models.toml, then restart the studio
-```
-
-Each slot is a Hugging Face file:
-
-```toml
-[image]
-label = "Qwen-Image 2.1"                       # shown in the settings panel
-description.en = "Official base model."
-description.tr = "Resmi temel model."
-[image.files]
-diffusion_model = { repo = "Comfy-Org/Qwen-Image-2.1", file = "diffusion_models/qwen_image_2.1_int8_convrot.safetensors", dir = "diffusion_models" }
-text_encoder    = { repo = "Comfy-Org/Qwen-Image-2.1", file = "text_encoders/qwen3vl_8b_int8_convrot.safetensors", dir = "text_encoders" }
-vae             = { repo = "Comfy-Org/Qwen-Image-2.1", file = "vae/qwen_image_2.1_vae_bf16.safetensors", dir = "vae" }
-turbo_lora      = { repo = "Comfy-Org/Qwen-Image-2.1", file = "loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors", dir = "loras" }
-```
-
-| Mode | Slots |
-| --- | --- |
-| `image` | `diffusion_model`, `text_encoder`, `vae`, `turbo_lora` |
-| `enhance` | `prompt_enhancer_t2i`, `prompt_enhancer_i2i` |
-| `video` | `diffusion_model`, `text_encoder`, `video_vae`, `audio_vae`, `turbo_lora` |
-| `model3d` | `diffusion_model`, `clip_vision`, `shape_vae`, `texture_vae`, `background_removal` |
-| `music` | `checkpoint` |
-| `speech` | none; files listed as `[[speech.extra]]` are downloaded as-is |
-
-Rules:
-
-- A replacement must have the **same architecture** as the default (for `image`: another Qwen-Image
-  2.1 model or fine-tune). The workflows are fixed ComfyUI graphs; an incompatible file fails when
-  the job runs, with ComfyUI's error shown in the chat.
-- It must fit the L4's 24 GB of VRAM; the defaults are quantized (int8/w6a8/nvfp4) for this reason.
-- The file is checked when the studio starts: a typo or a missing slot stops it with a clear message.
-- Gated repositories need `HF_TOKEN` in `.env`, from an account that accepted the model's terms.
-
-The default image model, Noct-Q V4, is an **uncensored** fine-tune. Switch to the official
-Qwen-Image 2.1 file shown above if that is not what you want. Each model has its own license; check
-it on its Hugging Face page before using outputs commercially.
-
-## Using it from Claude Code (MCP)
-
-The [`mcp/`](mcp) folder contains an MCP server that lets Claude Code or Claude Desktop drive the
-studio: start the GPU, generate media, wait for jobs and look at the results.
-
-```bash
-cd mcp && ./install.sh
-claude mcp add colab-studio -- node "$PWD/dist/index.js"
-```
-
-Or let the installer do it: `./install.sh --mcp` builds it too (Node.js 22+) and prints the `claude mcp add` command.
-See [mcp/README.md](mcp/README.md) for remote (SSH) setups and the tool list.
 
 ## Updating
 
@@ -266,22 +232,6 @@ tells you and leaves the restart to you). Started with `./run.sh`: restart it yo
 Without Node.js, `install.sh` downloads the prebuilt UI of the release in `VERSION`. If the code you
 pulled has newer UI changes than that release, it says so; install Node.js 20+ to build the matching UI.
 
-## Troubleshooting
-
-`./install.sh --doctor` checks the tools, `.env`, the port, the Colab sign-in and the service, and says what to fix.
-
-| Symptom | Fix |
-| --- | --- |
-| "colab CLI is not signed in" | Run `colab usage` (Docker: `docker compose run --rm studio colab usage`), sign in, then start the GPU again. No restart needed. |
-| 403 "the host name ... is not allowed" | You opened the studio by a domain name. Add it to `STUDIO_ALLOWED_HOSTS` in `.env` and restart. |
-| GPU start fails at "Allocating GPU" | No L4 available or no compute units left. Check `colab usage`, try again later. |
-| Downloads are slow or fail with 429 | Set `HF_TOKEN` in `.env` and restart. |
-| A job fails after you changed `models.toml` | The new file is probably a different architecture; see [Models](#models). |
-| Anything else | The log button (top right) shows the GPU start log; `journalctl --user -u colab-studio` the service log. |
-
-The studio only ever releases the Colab session it created (`STUDIO_SESSION`). If it was killed
-while a GPU was running, it releases that runtime on its next start.
-
 ## Uninstalling
 
 ```bash
@@ -291,6 +241,36 @@ while a GPU was running, it releases that runtime on its next start.
 
 uv and the Colab CLI (`uv tool uninstall google-colab-cli`) are left alone. Docker: `docker compose down -v`
 (`-v` also deletes the data volume).
+
+## Troubleshooting
+
+`./install.sh --doctor` checks the tools, `.env`, the port, the Colab sign-in and the service, and says what to fix.
+
+| Symptom | Fix |
+| --- | --- |
+| "colab CLI is not signed in" | Do the [Google sign-in](#google-sign-in-once), then start the GPU again. No restart needed. |
+| 403 "the host name ... is not allowed" | You opened the studio by a domain name. Add it to `STUDIO_ALLOWED_HOSTS` in `.env` and restart. |
+| GPU start fails at "Allocating GPU" | No L4 available or no compute units left. Check `colab usage`, try again later. |
+| Downloads are slow or fail with 429 | Set `HF_TOKEN` in `.env` and restart. |
+| A job fails after you changed `models.toml` | The new file is probably a different architecture; see [Models](docs/models.md). |
+| Anything else | The log button (top right) shows the GPU start log; `journalctl --user -u colab-studio` the service log. |
+
+The studio only ever releases the Colab session it created (`STUDIO_SESSION`). If it was killed
+while a GPU was running, it releases that runtime on its next start.
+
+## Using it from Claude Code (MCP)
+
+The [`mcp/`](mcp) folder contains an MCP server that lets Claude Code or Claude Desktop drive the
+studio: start the GPU, generate media, wait for jobs and look at the results. It needs Node.js 22+.
+
+```bash
+./install.sh --mcp          # installs the studio (if needed), builds the MCP server, prints the command below
+claude mcp add colab-studio -- node "$PWD/mcp/dist/index.js"
+```
+
+There are two `install.sh` files: the one in the repository root installs the **studio**; the one in
+`mcp/` builds only the **MCP server** (`--mcp` runs it for you). See [mcp/README.md](mcp/README.md) for
+remote (SSH) setups and the tool list.
 
 ## Privacy and security
 
@@ -317,8 +297,8 @@ python3 server/tests/gpu_smoke.py   # one job per mode on a real GPU (spends com
 | `server/workflows.py` | ComfyUI workflow graphs |
 | `server/web/` | React UI (`src/i18n.ts`, `src/en.ts`: translations) |
 | `station/` | runs on the GPU: setup script, model downloader, model catalog |
-| `mcp/` | MCP server |
-| `deploy/` | systemd service and nginx templates |
+| `mcp/` | MCP server (its own `install.sh` builds only this) |
+| `deploy/` | systemd service, nginx templates, `doctor.sh`, `uninstall.sh` |
 
 The API's status and error messages are in Turkish; the web UI translates them (`src/en.ts`), so
 the UI is English by default. Add the English text there when you add a new server message.
