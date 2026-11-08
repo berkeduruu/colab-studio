@@ -51,18 +51,29 @@ phase "2/5 ComfyUI ve eklentiler indiriliyor"
 # 2.2.0'ın hazır wheel arşivi arka planda indirilir (~30 sn kaynak derlemesini önler).
 rm -rf /tmp/tts /tmp/whisper
 mkdir -p /content/wheels /tmp/tts /tmp/whisper
-(curl -LsSf --retry 3 "${WHEELS_URL}" -o /tmp/wheels.tar.gz
+# GitHub'ın arşiv sunucusu zaman zaman 504 döndürüyor (tek bir 504 GPU açılışını düşürüyordu): her
+# indirme yeniden denenir. Arşiv önce dosyaya iner; yarıda kalıp yeniden başlayan bir aktarım tar'a
+# yarım arşiv beslemesin.
+CURL=(curl -LsSf --retry 6 --retry-delay 5 --retry-all-errors)
+fetch() {  # fetch URL DIR: GitHub arşivini DIR'e açar (üst klasör atlanır)
+  local file rc
+  file=$(mktemp /tmp/archive.XXXXXX)
+  "${CURL[@]}" "$1" -o "${file}" && tar -C "$2" -xzf "${file}" --strip-components=1 && rc=0 || rc=$?
+  rm -f "${file}"
+  return "${rc}"
+}
+("${CURL[@]}" "${WHEELS_URL}" -o /tmp/wheels.tar.gz
  echo "${WHEELS_SHA256}  /tmp/wheels.tar.gz" | sha256sum -c --quiet -
  tar -C /content/wheels -xzf /tmp/wheels.tar.gz) &
 wheels_pid=$!
-curl -LsSf https://github.com/diodiogod/TTS-Audio-Suite/archive/${TTS_SUITE_COMMIT}.tar.gz | tar -C /tmp/tts -xz --strip-components=1 &
+fetch "https://github.com/diodiogod/TTS-Audio-Suite/archive/${TTS_SUITE_COMMIT}.tar.gz" /tmp/tts &
 tts_pid=$!
-curl -LsSf https://github.com/yuvraj108c/ComfyUI-Whisper/archive/${WHISPER_COMMIT}.tar.gz | tar -C /tmp/whisper -xz --strip-components=1 &
+fetch "https://github.com/yuvraj108c/ComfyUI-Whisper/archive/${WHISPER_COMMIT}.tar.gz" /tmp/whisper &
 whisper_pid=$!
 # Eski ağaç kalmaz: arşiv var olan dizinin üzerine açılırsa silinmiş dosyalar geride kalıyordu.
 rm -rf "${COMFY}"
 mkdir -p "${COMFY}"
-curl -LsSf https://github.com/Comfy-Org/ComfyUI/archive/${COMFY_COMMIT}.tar.gz | tar -C "${COMFY}" -xz --strip-components=1
+fetch "https://github.com/Comfy-Org/ComfyUI/archive/${COMFY_COMMIT}.tar.gz" "${COMFY}"
 
 phase "3/5 Python ortamı ve paketler kuruluyor"
 # --clear: aynı runtime'da yeniden koşulabilsin. only-managed: Colab'ın Python'una bağlı kalma.
