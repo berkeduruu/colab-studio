@@ -33,8 +33,18 @@ mkdir -p "${HOME}/keep-me"
 echo "STUDIO_DATA=~" > .env
 check "uninstall refuses STUDIO_DATA=~" 0 "does not look like a data folder" ./install.sh --uninstall --purge
 [[ -d ${HOME}/keep-me ]] && echo "ok    home directory untouched" || { echo "FAIL  home directory was deleted"; fails=$((fails + 1)); }
+# The same home folder (or a parent of it, or of this checkout) spelled so that a plain string
+# comparison misses it, and a folder that is not a studio data folder.
+ln -sfn "${HOME}" "${TMP}/home-link"
+mkdir -p "${HOME}/not-studio" && touch "${HOME}/not-studio/precious"
+for bad in "${HOME}/../home" "${HOME}/" "${HOME}/." "${TMP}/home-link" "${TMP}" "${HOME}/not-studio"; do
+  echo "STUDIO_DATA=${bad}" > .env
+  check "uninstall --purge refuses STUDIO_DATA=${bad#"${TMP}"/}" 0 "does not look like a data folder" ./install.sh --uninstall --purge
+done
+[[ -d ${HOME}/keep-me && -f ${HOME}/not-studio/precious && -d ${TMP}/repo ]] && echo "ok    home, other folders and the checkout untouched" \
+  || { echo "FAIL  a protected folder was deleted"; fails=$((fails + 1)); }
 
-mkdir -p "${HOME}/data/media"
+mkdir -p "${HOME}/data/media" && touch "${HOME}/data/studio.db"
 echo "STUDIO_DATA=${HOME}/data" > .env
 check "uninstall --yes keeps data and .env" 0 "kept|keeping|Done" ./install.sh --uninstall --yes
 [[ -d ${HOME}/data && -f .env ]] && echo "ok    data and .env kept" || { echo "FAIL  data or .env deleted by --yes"; fails=$((fails + 1)); }

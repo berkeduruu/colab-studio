@@ -15,7 +15,7 @@
   <a href="https://github.com/berkeduruu/colab-studio/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/berkeduruu/colab-studio/test.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/berkeduruu/colab-studio?style=flat-square&color=8b5cf6" alt="License: AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/GPU-Colab%20L4-F9AB00?style=flat-square&logo=googlecolab&logoColor=white" alt="Google Colab L4">
-  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20WSL2%20%7C%20Docker-555?style=flat-square&logo=linux&logoColor=white" alt="Linux, WSL2, Docker">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Docker-555?style=flat-square&logo=linux&logoColor=white" alt="Linux, Docker">
 </p>
 
 <p align="center">
@@ -40,13 +40,13 @@ Nerede çalıştıracağına göre yolu seç:
 | --- | --- | --- |
 | Linux bilgisayar ya da sunucu | [kurulum betiği](#kurulum-betiği) (`./install.sh`) | `git`, `curl`, `ssh` (`ssh-keygen` ile), `tar`, `python3` |
 | Docker olan her sistem | [Docker](#docker) | Docker Compose v2.24 ya da üstü |
-| Windows | [Docker](#docker), ya da Ubuntu'lu [WSL2](https://learn.microsoft.com/tr-tr/windows/wsl/install) ve içinde [kurulum betiği](#kurulum-betiği) | |
+| Windows ya da macOS | [Docker](#docker) (henüz denenmedi) | Docker Compose v2.24 ya da üstü |
 | Başkalarının alan adıyla açacağı bir sunucu | yukarıdakilerden biri, sonra [nginx + HTTPS + parola](#başka-cihazlardan-açmak) | sunucuyu gösteren bir alan adı |
 
 Hangisini seçersen seç, **Colab kredisi (compute unit) olan bir Google hesabı** da gerekir (Colab Pro,
 Pro+ ya da kullandıkça öde; ücretsiz katmanda L4 yok). L4 açık kaldığı her saat kredi harcar; kenar
-çubuğu bakiyeni, saatlik harcamayı ve ne kadar yeteceğini gösterir. Linux ve WSL2 desteklenen
-sistemlerdir; macOS denenmedi, Windows ya da macOS'ta Docker da denenmedi.
+çubuğu bakiyeni, saatlik harcamayı ve ne kadar yeteceğini gösterir. Denenen sistem Linux'tur; Windows
+(WSL2 dahil) ve macOS, Docker'lı ya da Docker'sız, denenmedi.
 
 ### Kurulum betiği
 

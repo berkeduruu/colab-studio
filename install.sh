@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Colab Studio installer for Linux (and WSL2). Safe to re-run: it only adds what is missing.
+# Colab Studio installer for Linux. Safe to re-run: it only adds what is missing.
 #
 #   ./install.sh                install, ask a few questions, sign in to Colab
 #   ./install.sh --service      also run the studio as a systemd user service (starts on boot)
@@ -121,7 +121,7 @@ download_ui() {
   fi
 }
 
-[[ $(uname -s) == Linux ]] || die "Colab Studio runs on Linux (on Windows use WSL2, on macOS it is untested)."
+[[ $(uname -s) == Linux ]] || die "the installer is for Linux (Windows and macOS are untested; Docker may work there, see README)."
 missing=()
 for cmd in curl ssh ssh-keygen tar python3; do command -v "${cmd}" >/dev/null || missing+=("${cmd}"); done
 if (( ${#missing[@]} )); then

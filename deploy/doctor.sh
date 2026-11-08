@@ -14,7 +14,7 @@ envget() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }
 echo "Colab Studio $(cat VERSION) in $(pwd)"
 
 echo "System"
-if [[ $(uname -s) == Linux ]]; then ok "Linux"; else fail "Colab Studio runs on Linux (on Windows use WSL2 or Docker)"; fi
+if [[ $(uname -s) == Linux ]]; then ok "Linux"; else fail "the installer is for Linux (Windows and macOS are untested; Docker may work there, see README)"; fi
 for cmd in curl ssh ssh-keygen tar python3; do
   if command -v "${cmd}" >/dev/null; then ok "${cmd}"; else fail "${cmd} is missing: sudo apt install curl openssh-client tar python3"; fi
 done

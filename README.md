@@ -15,7 +15,7 @@
   <a href="https://github.com/berkeduruu/colab-studio/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/berkeduruu/colab-studio/test.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/berkeduruu/colab-studio?style=flat-square&color=8b5cf6" alt="License: AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/GPU-Colab%20L4-F9AB00?style=flat-square&logo=googlecolab&logoColor=white" alt="Google Colab L4">
-  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20WSL2%20%7C%20Docker-555?style=flat-square&logo=linux&logoColor=white" alt="Linux, WSL2, Docker">
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20Docker-555?style=flat-square&logo=linux&logoColor=white" alt="Linux, Docker">
 </p>
 
 <p align="center">
@@ -40,13 +40,13 @@ Pick the way that fits where you run it:
 | --- | --- | --- |
 | A Linux computer or server | [the installer](#installer) (`./install.sh`) | `git`, `curl`, `ssh` (with `ssh-keygen`), `tar`, `python3` |
 | Any system with Docker | [Docker](#docker) | Docker Compose v2.24 or newer |
-| Windows | [Docker](#docker), or [WSL2](https://learn.microsoft.com/windows/wsl/install) with Ubuntu and then [the installer](#installer) inside it | |
+| Windows or macOS | [Docker](#docker) (not tried yet) | Docker Compose v2.24 or newer |
 | A server that others open by a domain name | either of the above, then [nginx + HTTPS + password](#opening-it-from-other-devices) | a domain pointing at the server |
 
 Whichever you pick, you also need a **Google account with Colab compute units** (Colab Pro, Pro+ or
 pay-as-you-go; the free tier does not offer L4 GPUs). An L4 consumes compute units for every hour it
-runs; the sidebar shows your balance, the hourly rate and how long it will last. Linux and WSL2 are the
-supported systems; macOS is untested, and Docker on Windows or macOS has not been tried.
+runs; the sidebar shows your balance, the hourly rate and how long it will last. Linux is the tested
+system; Windows (including WSL2) and macOS have not been tried, with or without Docker.
 
 ### Installer
 

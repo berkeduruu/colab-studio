@@ -50,10 +50,19 @@ if [[ -d server/web/dist ]]; then rm -rf server/web/dist; note "removed server/w
 if [[ -d mcp/dist || -d mcp/node_modules ]]; then rm -rf mcp/dist mcp/node_modules; note "removed the built MCP server"; fi
 
 say "Your data"
-# Refuse anything that is not clearly a studio data folder: a typo in .env must not delete a home directory.
-if [[ ${data} != /* || ${data} == / || ${data} == "${HOME}" || $(grep -o / <<<"${data}" | wc -l) -lt 2 ]]; then
+# Refuse anything that is not clearly a studio data folder: a typo in .env must not delete a home
+# directory. The path is resolved first, so "..", "." , a trailing slash or a symlink cannot sneak the
+# home folder (or one of its parents, or this checkout) past the checks.
+contains() { [[ $2 == "$1" || $2 == "$1"/* ]]; }  # contains A B: B is A or inside A
+real=
+[[ ${data} == /* ]] && real=$(realpath -m -- "${data}")
+home=$(realpath -m -- "${HOME}")
+if [[ -z ${real} ]] || contains "${real}" "${home}" || contains "${real}" "${REPO}"; then
   note "STUDIO_DATA=${data} does not look like a data folder; leaving it alone"
-elif [[ -d ${data} ]]; then
+elif [[ -d ${real} && ! -f ${real}/studio.db ]]; then
+  note "STUDIO_DATA=${data} does not look like a data folder (no studio.db in it); leaving it alone"
+elif [[ -d ${real} ]]; then
+  data=${real}
   if yes_no "Delete your chats and generated media in ${data} ($(du -sh "${data}" 2>/dev/null | cut -f1))?"; then
     rm -rf "${data}"; note "deleted ${data}"
   else
