@@ -139,6 +139,12 @@ export type Mode = "image" | "video" | "model3d" | "music" | "speech" | "transcr
 
 export type JobStatus = "queued" | "waiting_gpu" | "running" | "done" | "error";
 
+// Job-status decisions live in one place: adding a status only changes this block. A cancelled job
+// currently arrives as "error" (the server has no separate status).
+export const isPending = (j: { status: JobStatus }) => j.status !== "done" && j.status !== "error";
+export const isDone = (j: { status: JobStatus }) => j.status === "done";
+export const isFailed = (j: { status: JobStatus }) => j.status === "error";
+
 export interface Job {
   id: string;
   thread_id: string | null;

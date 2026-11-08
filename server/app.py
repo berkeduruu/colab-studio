@@ -1,8 +1,10 @@
 """Stüdyo web servisi: arayüzü sunar, GPU runtime'ını ve üretim işlerini API ile yönetir."""
 import asyncio
+import errno
 import ipaddress
 import math
 import os
+import socket
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -515,7 +517,8 @@ def create_app():
     return app
 
 
-if __name__ == "__main__":
+def _banner(_aiohttp_message=None):
+    """Printed by run_app once the socket is bound, so a URL is only shown when it really works."""
     if config.HOST not in ("127.0.0.1", "localhost", "::1") and not os.environ.get("STUDIO_IN_DOCKER"):
         print(
             f"WARNING: listening on {config.HOST}:{config.PORT} without a password. Anyone who can reach this "
@@ -528,7 +531,37 @@ if __name__ == "__main__":
         # İçerideki port sabit (8190); kullanıcı docker-compose ile başka bir host portu yayınlamış olabilir.
         print(f"Colab Studio {version}: listening on port {config.PORT} inside the container; "
               "open the address published by docker compose (STUDIO_PORT in .env, default 8190)", flush=True)
+    elif config.HOST in ("0.0.0.0", "::"):
+        print(f"Colab Studio {version}: http://127.0.0.1:{config.PORT}/ on this machine, "
+              f"http://<this machine's IP>:{config.PORT}/ from other devices", flush=True)
     else:
-        print(f"Colab Studio {version}: "
-              f"http://{'127.0.0.1' if config.HOST in ('0.0.0.0', '::') else config.HOST}:{config.PORT}/", flush=True)
-    web.run_app(create_app(), host=config.HOST, port=config.PORT, print=None)
+        print(f"Colab Studio {version}: http://{config.HOST}:{config.PORT}/", flush=True)
+
+
+def _exit_if_cannot_listen(e):
+    if e.errno == errno.EADDRINUSE:
+        sys.exit(f"Colab Studio: port {config.PORT} is already in use (another Colab Studio, or another "
+                 "program, is listening there). Stop it, or set another STUDIO_PORT in .env.")
+    sys.exit(f"Colab Studio: cannot listen on {config.HOST}:{config.PORT} ({e.strerror or e}). STUDIO_HOST "
+             "must be 127.0.0.1, 0.0.0.0 or an address of this machine.")
+
+
+def _check_listen_address():
+    """Binds once before the app starts: on_startup releases the studio's Colab session, which must not
+    happen when this is a second copy that cannot listen anyway (it would stop the first copy's GPU)."""
+    try:
+        family, kind, proto, _, addr = socket.getaddrinfo(
+            config.HOST, config.PORT, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)[0]
+        with socket.socket(family, kind, proto) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # aiohttp does the same
+            s.bind(addr)
+    except OSError as e:
+        _exit_if_cannot_listen(e)
+
+
+if __name__ == "__main__":
+    _check_listen_address()
+    try:
+        web.run_app(create_app(), host=config.HOST, port=config.PORT, print=_banner)
+    except OSError as e:  # lost a race for the port after the check
+        _exit_if_cannot_listen(e)

@@ -39,11 +39,16 @@ class CatalogError(ValueError):
 def _entry(mode, where, value):
     if not isinstance(value, dict):
         raise CatalogError(f"{mode}.{where}: expected {{ repo = ..., file = ..., dir = ... }}")
-    missing = [k for k in ("repo", "file", "dir") if not isinstance(value.get(k), str) or not value[k].strip()]
+    unknown = set(value) - {"repo", "file", "dir"}
+    if unknown:
+        raise CatalogError(f"{mode}.{where}: unknown key(s): {', '.join(sorted(unknown))} (expected: repo, file, dir)")
+    missing =[k for k in ("repo", "file", "dir") if not isinstance(value.get(k), str) or not value[k].strip()]
     if missing:
         raise CatalogError(f"{mode}.{where}: missing {', '.join(missing)}")
     if value["repo"].count("/") != 1:
         raise CatalogError(f"{mode}.{where}: repo must look like 'owner/name', got {value['repo']!r}")
+    if value["file"].startswith("/") or ".." in Path(value["file"]).parts:
+        raise CatalogError(f"{mode}.{where}: file must be a path inside the repository, got {value['file']!r}")
     if value["dir"].startswith("/") or ".." in Path(value["dir"]).parts:
         raise CatalogError(f"{mode}.{where}: dir must be a relative folder under ComfyUI/models")
     return (value["repo"], value["file"], value["dir"])
@@ -62,12 +67,16 @@ def parse(data):
     """Validated catalog: {mode: {"label", "description", "files": {slot: (repo, file, dir)}, "pack": [...]}}."""
     unknown = set(data) - set(SLOTS)
     if unknown:
-        raise CatalogError(f"unknown mode(s): {', '.join(sorted(unknown))} (known: {', '.join(SLOTS)})")
+        hint = " (transcribe needs no entry: its Whisper model is downloaded by the ComfyUI plugin)" if "transcribe" in unknown else ""
+        raise CatalogError(f"unknown mode(s): {', '.join(sorted(unknown))} (known: {', '.join(SLOTS)}){hint}")
     catalog = {}
     for mode, slots in SLOTS.items():
         section = data.get(mode)
         if not isinstance(section, dict):
             raise CatalogError(f"[{mode}] section is missing")
+        typos = set(section) - {"label", "description", "files", "extra"}
+        if typos:
+            raise CatalogError(f"[{mode}] unknown key(s): {', '.join(sorted(typos))} (expected: label, description, files, extra)")
         files = section.get("files", {})
         if not isinstance(files, dict):
             raise CatalogError(f"[{mode}.files] must be a table")
@@ -97,6 +106,8 @@ def load(path):
     path = Path(path)
     try:
         data = tomllib.loads(path.read_text())
+    except OSError as e:
+        raise CatalogError(f"{path}: cannot read the model catalog ({e.strerror}); check STUDIO_MODELS in .env") from None
     except tomllib.TOMLDecodeError as e:
         raise CatalogError(f"{path}: {e}") from None
     try:

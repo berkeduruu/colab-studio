@@ -1,5 +1,5 @@
 # No GPU needed: lint, backend tests, UI tests against a mocked API, the MCP server against a
-# GPU-less studio, and the Docker image build.
+# GPU-less studio, the Docker image build and deploy/setup-nginx.sh against a real nginx.
 name: test
 
 on:
@@ -15,6 +15,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Lint
         run: ./lint.sh
+      - name: Shell scripts (install.sh options, doctor, uninstall)
+        run: deploy/test-scripts.sh
       - name: Build the UI (served by the API tests)
         working-directory: server/web
         run: npm ci && npm run build
@@ -80,3 +82,12 @@ jobs:
           for _ in $(seq 30); do curl -sf 127.0.0.1:8190/api/runtime && break; sleep 1; done
           curl -sf 127.0.0.1:8190/ | grep -q '<div id="root">'
           docker logs studio
+
+  nginx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: setup-nginx.sh against a real nginx (Ubuntu 24.04 and 22.04 containers)
+        run: |
+          deploy/test-nginx.sh
+          UBUNTU=22.04 deploy/test-nginx.sh

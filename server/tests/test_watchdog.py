@@ -43,6 +43,9 @@ async def watch(data_dir, aiohttp_server, monkeypatch):
     async def fake_stop_runtime():
         stops.append(time.time())
 
+    token = data_dir / "token.json"
+    token.write_text("{}")
+    monkeypatch.setattr(runtime, "COLAB_TOKEN", token)  # giriş yapılmış say: kredi okunur
     monkeypatch.setattr(runtime, "COMFY_URL", comfy_url)
     monkeypatch.setattr(runtime, "run", fake_run)
     monkeypatch.setattr(runtime, "stop_runtime", fake_stop_runtime)
@@ -65,6 +68,15 @@ async def test_idle_gpu_is_stopped(watch):
     assert watch["stops"] and runtime.state["phase"] == "off"
     assert "boşta" in runtime.state["detail"]
     assert watch["credits"][0] == {"balance": 100.0, "rate": 1.5}
+
+
+async def test_credits_are_not_polled_without_sign_in(watch, monkeypatch, tmp_path):
+    monkeypatch.setattr(runtime, "COLAB_TOKEN", tmp_path / "missing-token.json")
+    await asyncio.sleep(0.2)
+    calls = len([c for c in watch["calls"] if c.endswith(" usage")])
+    await asyncio.sleep(0.2)
+    assert len([c for c in watch["calls"] if c.endswith(" usage")]) == calls  # no OAuth attempt every round
+    assert "girişi yok" in runtime.state["credits"]["error"]
 
 
 async def test_pending_studio_jobs_keep_gpu_alive(watch):

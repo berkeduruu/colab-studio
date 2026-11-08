@@ -42,11 +42,33 @@ def test_unknown_slot_and_mode_are_rejected():
         catalog.parse(data)
 
 
+def test_typos_in_keys_are_rejected():
+    data = _data()
+    data["image"]["labell"] = data["image"].pop("label")
+    with pytest.raises(catalog.CatalogError, match=r"\[image\] unknown key\(s\): labell"):
+        catalog.parse(data)
+    data = _data()
+    data["music"]["files"]["checkpoint"]["fiel"] = "x"
+    with pytest.raises(catalog.CatalogError, match=r"unknown key\(s\): fiel"):
+        catalog.parse(data)
+    data = _data()
+    data["transcribe"] = {}
+    with pytest.raises(catalog.CatalogError, match="Whisper model is downloaded by the ComfyUI plugin"):
+        catalog.parse(data)
+
+
+def test_missing_file_is_a_catalog_error(tmp_path):
+    with pytest.raises(catalog.CatalogError, match=r"cannot read the model catalog.*STUDIO_MODELS"):
+        catalog.load(tmp_path / "nope.toml")
+
+
 @pytest.mark.parametrize("entry, message", [
     ({"repo": "a/b", "file": "x"}, "missing dir"),
     ({"repo": "nope", "file": "x", "dir": "vae"}, "owner/name"),
     ({"repo": "a/b", "file": "x", "dir": "../etc"}, "relative folder"),
     ({"repo": "a/b", "file": "x", "dir": "/abs"}, "relative folder"),
+    ({"repo": "a/b", "file": "../x", "dir": "vae"}, "inside the repository"),
+    ({"repo": "a/b", "file": "/x", "dir": "vae"}, "inside the repository"),
 ])
 def test_bad_entries_are_rejected(entry, message):
     data = _data()

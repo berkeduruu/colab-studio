@@ -5,6 +5,7 @@ are already set in the environment win). See `.env.example` for every option.
 """
 import os
 import shutil
+import sys
 from pathlib import Path
 
 REPO_DIR = Path(__file__).resolve().parent.parent
@@ -29,16 +30,33 @@ load_dotenv(Path(os.environ.get("STUDIO_ENV_FILE", REPO_DIR / ".env")))
 
 # Address the web UI listens on. 127.0.0.1: only this machine. 0.0.0.0: reachable by IP from the
 # network (there is no password then; put nginx + basic auth in front, see deploy/setup-nginx.sh).
-HOST = os.environ.get("STUDIO_HOST", "127.0.0.1")
-PORT = int(os.environ.get("STUDIO_PORT", "8190"))
+def _int_setting(name, default, low, high, what):
+    """Integer setting; a typo stops the studio with one readable line instead of a traceback."""
+    raw = os.environ.get(name, default).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        value = None
+    if value is None or not low <= value <= high:
+        sys.exit(f"Colab Studio: {name}={raw!r} is not valid: {what}. Fix it in .env and start the studio again.")
+    return value
+
+
+HOST = os.environ.get("STUDIO_HOST", "127.0.0.1").strip()
+PORT = _int_setting("STUDIO_PORT", "8190", 1, 65535, "it must be a port number from 1 to 65535")
 # Host names the UI may be opened by, besides IP addresses and localhost (comma-separated, e.g. the
 # nginx domain). Requests for any other name are refused: this blocks DNS rebinding, where a web page
 # points its own domain at 127.0.0.1 to reach the studio. "*" turns the check off.
-ALLOWED_HOSTS = {h.strip().lower().rstrip(".") for h in os.environ.get("STUDIO_ALLOWED_HOSTS", "").split(",") if h.strip()}
+# Quotes around single items ("a.example", b.example) are tolerated as well as around the whole value.
+ALLOWED_HOSTS = {
+    h.strip().strip("'\"").strip().lower().rstrip(".")
+    for h in os.environ.get("STUDIO_ALLOWED_HOSTS", "").split(",")
+    if h.strip().strip("'\"").strip()
+}
 # Database, generated media, SSH key and learned timings.
 DATA_DIR = Path(os.environ.get("STUDIO_DATA", "~/.local/share/colab-studio")).expanduser()
 # The GPU runtime is released after this many idle minutes (it costs Colab compute units).
-IDLE_MINUTES = int(os.environ.get("STUDIO_IDLE_MINUTES", "15"))
+IDLE_MINUTES = _int_setting("STUDIO_IDLE_MINUTES", "15", 1, 24 * 60, "it must be a number of minutes from 1 to 1440")
 # Only L4 is supported: all workflows, VRAM budgets and time estimates were measured on it.
 GPU = "L4"
 # Colab session name the studio owns; other sessions on the same account are never touched.
