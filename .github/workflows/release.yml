@@ -24,7 +24,7 @@ jobs:
         run: |
           npm ci
           npm run build
-          tar -C dist -czf ../../web-dist.tar.gz .
+          tar -C dist --owner=0 --group=0 --numeric-owner -czf ../../web-dist.tar.gz .  # no build-machine uid in the archive
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
