@@ -152,7 +152,8 @@ About `setup-nginx.sh`:
   work too, but Let's Encrypt counts its weekly certificate limit for `sslip.io` as a whole, shared by
   all its users, so issuance can fail with a rate-limit error; your own domain avoids that.
 - It manages **one** studio site: running it again with another domain replaces the previous one.
-  If anything fails (certificate, nginx test, Ctrl+C), the previous nginx configuration is put back.
+  If anything fails (certificate, nginx test, Ctrl+C), the previous studio site and `.env` are put back
+  (an issued certificate and the password are kept for the next run).
   An e-mail for Let's Encrypt can be passed as a second argument.
 - It asks for the username and password on the terminal. For scripts or CI set `STUDIO_USER` and
   `STUDIO_PASSWORD` instead (`sudo STUDIO_PASSWORD=... ./deploy/setup-nginx.sh studio.example.com`);

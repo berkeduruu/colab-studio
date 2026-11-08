@@ -110,7 +110,8 @@ download_ui() {
   mv "${tmp}" server/web/dist
   # The prebuilt UI matches the v${VERSION} release. The checkout (pulled commits or local edits) may be newer.
   if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null 2>&1; then
-    if ! git diff --quiet "v${VERSION}" -- server/web/src server/web/index.html server/web/package.json 2>/dev/null; then
+    if ! git diff --quiet "v${VERSION}" -- server/web/src server/web/public server/web/index.html server/web/package.json \
+         server/web/package-lock.json server/web/vite.config.ts 2>/dev/null; then
       note "WARNING: this checkout has UI changes newer than v${VERSION}; the downloaded UI is the v${VERSION} one."
       note "Install Node.js 20.19+ or 22.12+, then run: rm -rf server/web/dist && ./install.sh"
     fi

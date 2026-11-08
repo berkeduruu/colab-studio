@@ -47,6 +47,8 @@ def _entry(mode, where, value):
         raise CatalogError(f"{mode}.{where}: missing {', '.join(missing)}")
     if value["repo"].count("/") != 1:
         raise CatalogError(f"{mode}.{where}: repo must look like 'owner/name', got {value['repo']!r}")
+    if value["file"].startswith("/") or ".." in Path(value["file"]).parts:
+        raise CatalogError(f"{mode}.{where}: file must be a path inside the repository, got {value['file']!r}")
     if value["dir"].startswith("/") or ".." in Path(value["dir"]).parts:
         raise CatalogError(f"{mode}.{where}: dir must be a relative folder under ComfyUI/models")
     return (value["repo"], value["file"], value["dir"])

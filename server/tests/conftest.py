@@ -11,7 +11,7 @@ os.environ.update(
     STUDIO_ENV_FILE="/nonexistent",  # geliştiricinin .env'i testlere sızmasın
     STUDIO_DATA=tempfile.mkdtemp(prefix="studio-test-"),
     STUDIO_IDLE_MINUTES="15",
-    STUDIO_PORT="0",
+    STUDIO_PORT="18190",  # yalnızca ayar olarak okunur; testler gerçek bir porta bağlanmaz
 )
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

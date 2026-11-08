@@ -9,7 +9,9 @@
 # internet for the certificate. Other nginx sites are left alone. The script manages ONE studio site:
 # running it again with another domain replaces the previous domain's site.
 # Keep STUDIO_HOST=127.0.0.1 in .env so the studio itself is only reachable through nginx.
-# If anything fails (certificate, nginx test, reload, Ctrl+C), the previous nginx configuration is put back.
+# If anything fails (certificate, nginx test, reload, Ctrl+C), the previous studio site, its
+# sites-enabled entry and .env are put back. An issued certificate and the password file are kept
+# (the next run reuses them).
 set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 DOMAIN=$(tr '[:upper:]' '[:lower:]' <<<"${1:?usage: sudo $0 <domain> [email]}")
@@ -34,7 +36,8 @@ port=$(grep -E '^STUDIO_PORT=' .env 2>/dev/null | cut -d= -f2 || true)
 port=${port:-8190}
 host=$(grep -E '^STUDIO_HOST=' .env 2>/dev/null | cut -d= -f2 || true)
 [[ ${host:-127.0.0.1} == 127.0.0.1 ]] || echo "WARNING: STUDIO_HOST=${host} in .env; set it to 127.0.0.1 so the studio is only reachable through nginx, then restart it."
-timeout 5 getent hosts "${DOMAIN}" >/dev/null || echo "WARNING: ${DOMAIN} does not resolve yet; the certificate request will fail until its DNS record points at this server."
+# --foreground keeps the lookup in our process group, so Ctrl+C reaches it and stops the script.
+timeout --foreground 5 getent hosts "${DOMAIN}" >/dev/null || echo "WARNING: ${DOMAIN} does not resolve yet; the certificate request will fail until its DNS record points at this server."
 
 missing=()
 command -v nginx >/dev/null || missing+=(nginx)
@@ -51,22 +54,32 @@ systemctl is-active --quiet nginx || systemctl start nginx \
   || die "nginx is not running and does not start (is another program using port 80 or 443? see: systemctl status nginx)"
 
 # Every exit path (error, Ctrl+C) removes the temporary challenge site and, unless the new site went
-# live, puts the previous studio site back.
+# live, puts back exactly what was there before: the studio site file, the sites-enabled entry (a
+# symlink keeps its own target, a missing one stays missing) and .env. The snapshot lives in a folder
+# nginx does not read (it only includes conf.d/*.conf and sites-enabled/*).
 acme_on=0
-site_written=0
+touched=0
 finished=0
-had_site=0; [[ -f ${SITE} ]] && had_site=1
-had_link=0; [[ -L ${LINK} || -e ${LINK} ]] && had_link=1
+SNAP=$(mktemp -d /etc/nginx/.colab-studio-rollback.XXXXXX)
+exists() { [[ -e $1 || -L $1 ]]; }  # -L: a dangling symlink counts too
+exists "${SITE}" && cp -a "${SITE}" "${SNAP}/site"
+exists "${LINK}" && cp -a "${LINK}" "${SNAP}/link"
+[[ -f .env ]] && cp -a .env "${SNAP}/env"
+restore() {  # restore <path> <snapshot name>
+  rm -f "$1"
+  if exists "${SNAP}/$2"; then cp -a "${SNAP}/$2" "$1"; fi
+}
 cleanup() {
   local code=$? changed=0
   if [[ ${acme_on} == 1 ]]; then rm -f "${ACME_LINK}" "${ACME_SITE}"; changed=1; fi
-  if [[ ${finished} == 0 && ${site_written} == 1 ]]; then
-    if [[ ${had_site} == 1 ]]; then mv -f "${SITE}.previous" "${SITE}"; else rm -f "${SITE}"; fi
-    [[ ${had_link} == 1 ]] || rm -f "${LINK}"
+  if [[ ${finished} == 0 && ${touched} == 1 ]]; then
+    restore "${SITE}" site
+    restore "${LINK}" link
+    if exists "${SNAP}/env"; then cp -a "${SNAP}/env" .env; fi
     changed=1
-    echo "The previous nginx configuration was put back." >&2
+    echo "The previous nginx site and .env were put back." >&2
   fi
-  rm -f "${SITE}.previous"
+  rm -rf "${SNAP}"
   if (( changed )) && nginx -t >/dev/null 2>&1; then systemctl reload nginx >/dev/null 2>&1 || true; fi
   exit "${code}"
 }
@@ -125,6 +138,7 @@ fi
 # 3. The studio only answers to IP addresses, localhost and the names in STUDIO_ALLOWED_HOSTS (DNS
 # rebinding protection), so the domain is added there before the site goes live.
 env_note=
+touched=1  # from here on a failure restores the snapshot taken above
 if [[ -f .env ]]; then
   added=$(python3 - "${DOMAIN}" <<'PY'
 import re, sys
@@ -147,8 +161,7 @@ else
 fi
 
 # 4. HTTPS site.
-[[ ${had_site} == 1 ]] && cp -a "${SITE}" "${SITE}.previous"
-site_written=1
+rm -f "${SITE}"  # never write through a symlink someone put there
 sed -e "s|@DOMAIN@|${DOMAIN}|g" -e "s|@PORT@|${port}|g" deploy/nginx.conf.template > "${SITE}"
 ln -sfn "${SITE}" "${LINK}"
 reload_nginx

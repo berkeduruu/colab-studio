@@ -43,7 +43,7 @@ def _int_setting(name, default, low, high, what):
 
 
 HOST = os.environ.get("STUDIO_HOST", "127.0.0.1").strip()
-PORT = _int_setting("STUDIO_PORT", "8190", 0, 65535, "it must be a port number from 1 to 65535")
+PORT = _int_setting("STUDIO_PORT", "8190", 1, 65535, "it must be a port number from 1 to 65535")
 # Host names the UI may be opened by, besides IP addresses and localhost (comma-separated, e.g. the
 # nginx domain). Requests for any other name are refused: this blocks DNS rebinding, where a web page
 # points its own domain at 127.0.0.1 to reach the studio. "*" turns the check off.

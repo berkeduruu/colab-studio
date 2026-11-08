@@ -611,11 +611,16 @@ async def watchdog(has_pending_jobs, on_credits):
 
 
 async def _watch_once(http, has_pending_jobs, on_credits):
-    try:
-        state["credits"] = parse_usage(await run(COLAB, "usage", timeout=60, quiet=True))
-        on_credits(state["credits"])
-    except RuntimeError as e:
-        state["credits"] = {"error": str(e)[:200]}
+    if not COLAB_TOKEN.exists():
+        # Girişsizken `colab usage` her turda bir OAuth akışı başlatıp log'u şişirir; giriş yapılınca
+        # sonraki tur krediyi yeniden okur.
+        state["credits"] = {"error": "colab CLI'da Google girişi yok"}
+    else:
+        try:
+            state["credits"] = parse_usage(await run(COLAB, "usage", timeout=60, quiet=True))
+            on_credits(state["credits"])
+        except RuntimeError as e:
+            state["credits"] = {"error": str(e)[:200]}
     if state["phase"] in ("off", "error"):
         await reap_owned()
     if state["phase"] != "ready":

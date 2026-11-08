@@ -67,6 +67,8 @@ def test_missing_file_is_a_catalog_error(tmp_path):
     ({"repo": "nope", "file": "x", "dir": "vae"}, "owner/name"),
     ({"repo": "a/b", "file": "x", "dir": "../etc"}, "relative folder"),
     ({"repo": "a/b", "file": "x", "dir": "/abs"}, "relative folder"),
+    ({"repo": "a/b", "file": "../x", "dir": "vae"}, "inside the repository"),
+    ({"repo": "a/b", "file": "/x", "dir": "vae"}, "inside the repository"),
 ])
 def test_bad_entries_are_rejected(entry, message):
     data = _data()

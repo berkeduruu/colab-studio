@@ -153,7 +153,8 @@ ters vekil sunucunu (reverse proxy) kullanıyorsan adı kendin ekleyip yeniden b
   ama Let's Encrypt haftalık sertifika sınırını tüm `sslip.io` için, bütün kullanıcıları arasında
   paylaşarak sayar; bu yüzden sertifika alma sınır hatasıyla düşebilir. Kendi alan adın bunu önler.
 - **Tek** bir stüdyo sitesi yönetir: başka bir alan adıyla tekrar çalıştırmak öncekinin yerine geçer.
-  Bir şey başarısız olursa (sertifika, nginx testi, Ctrl+C) önceki nginx yapılandırması geri konur.
+  Bir şey başarısız olursa (sertifika, nginx testi, Ctrl+C) önceki stüdyo sitesi ve `.env` geri konur
+  (alınmış bir sertifika ve parola sonraki çalıştırma için saklanır).
   Let's Encrypt için bir e-posta ikinci argüman olarak verilebilir.
 - Kullanıcı adı ve parolayı terminalden sorar. Betik ya da CI için bunun yerine `STUDIO_USER` ve
   `STUDIO_PASSWORD` ver (`sudo STUDIO_PASSWORD=... ./deploy/setup-nginx.sh studio.ornek.com`); terminal de

@@ -37,7 +37,7 @@ claude mcp add colab-studio -- ssh -T my-server node /path/to/colab-studio/mcp/d
 | `COLAB_BIN` | `colab` | colab CLI, for `colab_sessions_raw`. |
 | `MCP_TRANSPORT` | stdio | `sse` (or `--sse`) serves HTTP/SSE instead. |
 | `MCP_HOST` / `MCP_PORT` | `127.0.0.1` / `8195` | SSE listen address (`--host`, `--port`). |
-| `MCP_HTTP_TOKEN` | empty | If set, SSE requests need `Authorization: Bearer <token>`. |
+| `MCP_HTTP_TOKEN` | empty | If set, every SSE request needs `Authorization: Bearer <token>`; only `GET /health` (a liveness check that reveals nothing) answers without it. |
 | `MCP_ALLOWED_ORIGINS` | empty | Comma-separated CORS allowlist for browser clients. |
 
 ## Tools
