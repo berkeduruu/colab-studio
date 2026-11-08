@@ -76,12 +76,29 @@ function startupLine(status: api.RuntimeStatus): string | null {
   return `Startup: ${step}${progress}, ${remaining}`;
 }
 
+/** Model paketlerinin indirme durumu tek satırda: "image 100%, video 42% (~3 min)". */
+function packsLine(packs: api.RuntimeStatus["packs"]): string | null {
+  if (!packs || typeof packs !== "object") {
+    return null;
+  }
+  const parts = Object.entries(packs).map(([name, raw]) => {
+    const pack = (raw || {}) as { fraction?: unknown; eta?: unknown };
+    const fraction = typeof pack.fraction === "number" ? pack.fraction : null;
+    const eta = typeof pack.eta === "number" && pack.eta > 0 ? ` (~${Math.max(1, Math.round(pack.eta / 60))} min)` : "";
+    return `${name} ${fraction === null ? "?" : percent(fraction * 100)}${fraction !== null && fraction < 1 ? eta : ""}`;
+  });
+  return parts.length > 0 ? `Model packs on GPU disk: ${parts.join(", ")}` : null;
+}
+
+const VERBOSE = z.boolean().default(false).describe("Also return the raw JSON");
+
 export function registerRuntimeTools(server: McpServer): void {
   server.tool(
     "colab_runtime_status",
-    "Inspect the current status of the Colab L4 GPU runtime, ComfyUI server, remaining credit balance, active jobs, and idle countdown.",
-    {},
-    async () => {
+    "Inspect the Colab L4 GPU runtime: phase, credits, queue, model packs and idle countdown. Not needed before generate_*: jobs start the GPU themselves.",
+    { verbose: VERBOSE },
+    { readOnlyHint: true },
+    async ({ verbose }) => {
       try {
         const status = await api.getRuntimeStatus();
         const lines = [
@@ -98,14 +115,17 @@ export function registerRuntimeTools(server: McpServer): void {
         if (startup) {
           lines.push(startup);
         }
+        const packs = packsLine(status.packs);
+        if (packs) {
+          lines.push(packs);
+        }
+        if (typeof status.idle_seconds === "number" && status.auto_shutdown) {
+          lines.push(`Idle: ${Math.round(status.idle_seconds / 60)} min of ${status.idle_minutes}`);
+        }
 
+        const raw = verbose ? `\n\nRaw: ${JSON.stringify(status)}` : "";
         return {
-          content: [
-            {
-              type: "text",
-              text: `${lines.join("\n")}\n\n=== Raw Status JSON ===\n${JSON.stringify(status, null, 2)}`,
-            },
-          ],
+          content: [{ type: "text", text: `${lines.join("\n")}${raw}` }],
         };
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -119,8 +139,9 @@ export function registerRuntimeTools(server: McpServer): void {
 
   server.tool(
     "colab_runtime_start",
-    "Start the Google Colab L4 GPU instance and initialize ComfyUI. Note: Startup takes ~4-5 minutes on a cold boot (allocates L4, sets up wheels and models).",
+    "Pre-warm the Colab L4 GPU (cold boot ~4-5 min, uses credits). Usually unnecessary: generate_* starts the GPU itself with that job's models first; this tool always prepares image models first.",
     {},
+    { destructiveHint: false, idempotentHint: true },
     async () => {
       try {
         const result = await api.startRuntime();
@@ -128,7 +149,12 @@ export function registerRuntimeTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Colab GPU runtime start requested.\nCurrent Phase: ${result.phase}\nDetail: ${result.detail || "Initiating startup"}\nStartup phase info: ${JSON.stringify(result.startup, null, 2)}`,
+              text: [
+                "Colab GPU runtime start requested.",
+                `Current Phase: ${result.phase}`,
+                `Detail: ${result.detail || "Initiating startup"}`,
+                startupLine(result),
+              ].filter(Boolean).join("\n"),
             },
           ],
         };
@@ -144,8 +170,9 @@ export function registerRuntimeTools(server: McpServer): void {
 
   server.tool(
     "colab_runtime_stop",
-    "Immediately shut down the Colab GPU runtime and close SSH tunnel to save Google Colab compute units.",
+    "Immediately shut down the Colab GPU runtime and close SSH tunnel to save Google Colab compute units. A job running on the GPU (from any client of this studio) is interrupted.",
     {},
+    { destructiveHint: true, idempotentHint: true },
     async () => {
       try {
         const result = await api.stopRuntime();
@@ -171,6 +198,7 @@ export function registerRuntimeTools(server: McpServer): void {
     "colab_runtime_toggle_auto",
     "Toggle automatic idle shutdown (default is enabled: shuts down GPU after 15 minutes of idle time to prevent credit waste).",
     {},
+    { destructiveHint: false },
     async () => {
       try {
         const result = await api.toggleAutoShutdown();
@@ -197,8 +225,10 @@ export function registerRuntimeTools(server: McpServer): void {
     "Get real-time GPU hardware metrics (VRAM used/total, GPU utilization %, temperature, RAM and disk usage).",
     {
       limit: z.number().int().min(1).max(200).default(10).describe("How many of the newest metric samples to show"),
+      verbose: VERBOSE,
     },
-    async ({ limit }) => {
+    { readOnlyHint: true },
+    async ({ limit, verbose }) => {
       try {
         const metrics = await api.getRuntimeMetrics();
         if (metrics.length === 0) {
@@ -222,7 +252,7 @@ export function registerRuntimeTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `${slice.length} of ${metrics.length} samples (newest last):\n${lines.join("\n")}\n\n=== Raw Metrics JSON ===\n${JSON.stringify(slice, null, 2)}`,
+              text: `${slice.length} of ${metrics.length} samples (newest last):\n${lines.join("\n")}${verbose ? `\n\nRaw: ${JSON.stringify(slice)}` : ""}`,
             },
           ],
         };
@@ -240,8 +270,9 @@ export function registerRuntimeTools(server: McpServer): void {
     "colab_runtime_logs",
     "Read the recent watchdog, startup, and error logs from the Colab Studio runtime.",
     {
-      limit: z.number().int().min(1).max(200).default(50).describe("Maximum number of recent log lines to retrieve"),
+      limit: z.number().int().min(1).max(200).default(30).describe("Maximum number of recent log lines to retrieve"),
     },
+    { readOnlyHint: true },
     async ({ limit }) => {
       try {
         const { lines } = await api.getRuntimeLogs();
@@ -264,23 +295,27 @@ export function registerRuntimeTools(server: McpServer): void {
     }
   );
 
-  server.tool(
-    "colab_sessions_raw",
-    "Directly execute `colab sessions` to inspect active Google Colab CLI sessions.",
-    {},
-    async () => {
-      try {
-        const output = await api.runColabSessions();
-        return {
-          content: [{ type: "text", text: output }],
-        };
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        return {
-          isError: true,
-          content: [{ type: "text", text: `Failed to run colab sessions: ${message}` }],
-        };
+  // get_system_status aynı çıktıyı zaten içerir: yalnızca yönetici modunda.
+  if (api.ADMIN_TOOLS) {
+    server.tool(
+      "colab_sessions_raw",
+      "Directly execute `colab sessions` to inspect active Google Colab CLI sessions.",
+      {},
+      { readOnlyHint: true },
+      async () => {
+        try {
+          const output = await api.runColabSessions();
+          return {
+            content: [{ type: "text", text: output }],
+          };
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Failed to run colab sessions: ${message}` }],
+          };
+        }
       }
-    }
-  );
+    );
+  }
 }

@@ -9,8 +9,10 @@ echo "=== Running Colab Studio MCP Protocol Verification ==="
 node -e '
 import { spawn } from "node:child_process";
 
+// Yönetici araçları da listelensin diye MCP_ADMIN_TOOLS=1: tam isim listesi doğrulanır.
 const child = spawn("node", ["dist/index.js"], {
-  stdio: ["pipe", "pipe", "inherit"]
+  stdio: ["pipe", "pipe", "inherit"],
+  env: { ...process.env, MCP_ADMIN_TOOLS: "1" }
 });
 
 // Araç sayısı değil, isim listesi doğrulanır: yeni araç eklemek testi kırmaz, silinen/yeniden

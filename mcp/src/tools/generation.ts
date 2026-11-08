@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import * as api from "../api.js";
 
@@ -22,9 +23,61 @@ const ALL_SPEECH_LANGUAGES = Array.from(
 /** Motora göre varsayılan dil: qwen3 Türkçe desteklemez, varsayılanı "Auto" olmalı. */
 const DEFAULT_SPEECH_LANGUAGE: Record<string, string> = { chatterbox: "Turkish", qwen3: "Auto" };
 
-/** Zaman aşımında iş iptal edilir: mesaj bu ifadeyi taşır. */
-function timeoutMessage(jobId: string, timeoutSeconds: number): string {
-  return `Job ${jobId} did not finish within ${timeoutSeconds} seconds — iş arka planda sürüyor, iptal edildi.`;
+/** Bekleme süresi dolduğunda iş varsayılan olarak sürer; yalnızca `cancel_on_timeout` iptal eder. */
+const CANCEL_ON_TIMEOUT = z
+  .boolean()
+  .default(false)
+  .describe("Cancel the job if the wait times out");
+
+const WAIT_TIMEOUT = z
+  .number()
+  .int()
+  .min(10)
+  .max(3600)
+  .default(api.JOB_TIMEOUT_SECONDS)
+  .describe("Max seconds to wait if wait is true");
+
+/** Üretim araçları kuyruğa iş ekler: yıkıcı değil, ama tekrar çağrı yeni iş (ve kredi) demektir. */
+const SUBMIT_ANNOTATIONS: ToolAnnotations = { destructiveHint: false };
+
+/** Özetteki istem kısaltılır: uzun (geliştirilmiş) istemler her yanıtta yeniden token harcamasın. */
+const PROMPT_PREVIEW_CHARS = 160;
+
+/** MCP ilerleme bildirimi için gereken kısım (`RequestHandlerExtra`'nın alt kümesi). */
+interface ProgressExtra {
+  _meta?: { progressToken?: string | number };
+  sendNotification: (notification: {
+    method: "notifications/progress";
+    params: { progressToken: string | number; progress: number; total?: number; message?: string };
+  }) => Promise<void>;
+}
+
+/**
+ * İstemci `progressToken` verdiyse her yoklamada ilerleme bildirimi gönderir (yalnızca değişince):
+ * bekleme sırasında kullanıcı ilerlemeyi görür, bazı istemciler zaman aşımını da sıfırlar.
+ */
+function progressReporter(extra: unknown): ((job: api.JobRecord) => void) | undefined {
+  const e = extra as Partial<ProgressExtra> | undefined;
+  const token = e?._meta?.progressToken;
+  if (token === undefined || typeof e?.sendNotification !== "function") {
+    return undefined;
+  }
+  let last = "";
+  let step = 0;
+  return (job) => {
+    const pct = Math.round((Number.isFinite(job.progress) ? job.progress : 0) * 100);
+    const message = `${job.status}${job.stage ? ` · ${job.stage}` : ""} · ${pct}%`;
+    if (message === last) {
+      return;
+    }
+    last = message;
+    step += 1;
+    // `progress` her bildirimde artmalı: yüzde düşebileceği için (aşama değişimi) sayaç kullanılır.
+    void e.sendNotification!({
+      method: "notifications/progress",
+      params: { progressToken: token, progress: step, message },
+    }).catch(() => undefined);
+  };
 }
 
 function errorMessage(error: unknown): string {
@@ -38,8 +91,12 @@ function formatJobSummary(job: api.JobRecord): string {
     `Kind: ${job.kind} (${job.mode})`,
     `Status: ${String(job.status).toUpperCase()}${cancelled ? " (cancelled)" : ""}`,
     `Progress: ${Math.round((Number.isFinite(job.progress) ? job.progress : 0) * 100)}%`,
-    `Prompt: "${job.prompt}"`,
+    `Prompt: "${job.prompt.length > PROMPT_PREVIEW_CHARS ? `${job.prompt.slice(0, PROMPT_PREVIEW_CHARS)}…` : job.prompt}"`,
   ];
+  const eta = job.live?.eta;
+  if (!api.isTerminalStatus(job.status) && typeof eta === "number" && eta > 0) {
+    lines.push(`ETA: ~${eta >= 90 ? `${Math.round(eta / 60)} min` : `${Math.round(eta)} s`}`);
+  }
 
   if (typeof job.stage === "string" && job.stage.length > 0) {
     lines.push(`Stage: ${job.stage}`);
@@ -51,35 +108,47 @@ function formatJobSummary(job: api.JobRecord): string {
     lines.push(`Result Text:\n${job.text}`);
   }
   if (job.outputs.length > 0) {
-    lines.push(`Outputs (${job.outputs.length} files):`);
+    lines.push(`Outputs (${job.outputs.length}):`);
     for (const output of job.outputs) {
-      lines.push(`  - File: ${output} -> ${api.mediaPublicUrl(output)}`);
+      lines.push(`  - ${output} -> ${api.mediaPublicUrl(output)}`);
     }
   }
 
   return lines.join("\n");
 }
 
+interface WaitOptions {
+  cancelOnTimeout: boolean;
+  onPoll?: (job: api.JobRecord) => void;
+}
+
 /**
- * İşi bekler; süre dolarsa işi iptal eder (`POST /api/jobs/{id}/cancel`) ve durum metni döner.
- * `AbortSignal` ile bekleme turu iptal edilebilir; iş bitince zamanlayıcı temizlenir.
+ * İşi bekler. Süre dolarsa iş varsayılan olarak sürer ve durum metni döner; `cancelOnTimeout` verilirse
+ * iptal edilir (`POST /api/jobs/{id}/cancel`). Kısa bir bekleme, GPU açılırken işi (ve açılışı)
+ * öldürmesin diye iptal artık varsayılan değildir.
  */
 async function waitForJobText(
   jobId: string,
   timeoutSeconds: number,
   pollIntervalSeconds: number,
-  finishedText: (job: api.JobRecord) => string
+  finishedText: (job: api.JobRecord) => string,
+  options: WaitOptions = { cancelOnTimeout: false }
 ): Promise<string> {
   const controller = new AbortController();
   const hardStopMs = (timeoutSeconds + 30) * 1000;
   const hardStop = setTimeout(() => controller.abort(), hardStopMs);
 
   try {
-    const job = await api.waitForJob(jobId, timeoutSeconds, pollIntervalSeconds, controller.signal);
+    const job = await api.waitForJob(jobId, timeoutSeconds, pollIntervalSeconds, controller.signal, options.onPoll);
     return finishedText(job);
   } catch (error: unknown) {
     if (!(error instanceof api.JobTimeoutError)) {
       throw error;
+    }
+
+    if (!options.cancelOnTimeout) {
+      const summary = error.lastJob ? `\n\n${formatJobSummary(error.lastJob)}` : "";
+      return `Job ${jobId} is still in progress after ${timeoutSeconds} s (not cancelled).${summary}\nCall wait_for_job with this ID to keep waiting.`;
     }
 
     let finalJob: api.JobRecord | null = error.lastJob;
@@ -94,17 +163,22 @@ async function waitForJobText(
     }
 
     const summary = finalJob ? `\n\n${formatJobSummary(finalJob)}` : "";
-    return `${timeoutMessage(jobId, timeoutSeconds)} ${cancelReport}${summary}\nUse get_job with this ID to read the final state.`;
+    return `Job ${jobId} did not finish within ${timeoutSeconds} s and cancel_on_timeout was set. ${cancelReport}${summary}`;
   } finally {
     clearTimeout(hardStop);
     controller.abort();
   }
 }
 
+/** Kuyruğa alınan işin yanıtı: kimlik özetin ilk satırında, tekrar edilmez. */
+function queuedText(label: string, job: api.JobRecord): string {
+  return `${label} queued. Call wait_for_job with the Job ID (one call, waits until done).\n\n${formatJobSummary(job)}`;
+}
+
 export function registerGenerationTools(server: McpServer): void {
   server.tool(
     "generate_image",
-    "Submit an image generation job using Qwen-Image 2.1 / Noct-Q V4. If GPU is off, it will be automatically queued and started.",
+    "Submit an image generation job using Qwen-Image 2.1 / Noct-Q V4. If the GPU is off it starts automatically (no need to call colab_runtime_start).",
     {
       prompt: z.string().min(1).describe("Detailed visual description of the desired image"),
       negative: z.string().optional().describe("Negative prompt to exclude unwanted concepts"),
@@ -120,9 +194,11 @@ export function registerGenerationTools(server: McpServer): void {
       scheduler: z.enum(["simple", "beta", "normal", "karras", "sgm_uniform"]).default("simple"),
       reference_images: z.array(z.string()).max(10).optional().describe("Array of uploaded image paths (e.g. ['uploads/abc.png']) for image-to-image editing"),
       thread_id: z.string().optional().describe("Optional thread ID to group generations"),
-      wait: z.boolean().default(false).describe("If true, wait until job completes and return output URLs directly"),
-      timeout_seconds: z.number().int().min(10).max(3600).default(api.JOB_TIMEOUT_SECONDS).describe("Timeout in seconds if wait is true; the job is cancelled when it expires"),
+      wait: z.boolean().default(false),
+      timeout_seconds: WAIT_TIMEOUT,
+      cancel_on_timeout: CANCEL_ON_TIMEOUT,
     },
+    SUBMIT_ANNOTATIONS,
     async ({
       prompt,
       negative,
@@ -140,7 +216,8 @@ export function registerGenerationTools(server: McpServer): void {
       thread_id,
       wait,
       timeout_seconds,
-    }) => {
+      cancel_on_timeout,
+    }, extra) => {
       try {
         const params: Record<string, unknown> = {
           ratio,
@@ -167,7 +244,7 @@ export function registerGenerationTools(server: McpServer): void {
         if (wait) {
           const text = await waitForJobText(job.id, timeout_seconds, 3, (finished) =>
             `Image generation finished!\n\n${formatJobSummary(finished)}`
-          );
+          , { cancelOnTimeout: cancel_on_timeout, onPoll: progressReporter(extra) });
           return { content: [{ type: "text", text }] };
         }
 
@@ -175,7 +252,7 @@ export function registerGenerationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Image generation job queued successfully!\nJob ID: ${job.id}\nUse 'get_job' or 'wait_for_job' to track progress.\n\n${formatJobSummary(job)}`,
+              text: queuedText("Image generation", job),
             },
           ],
         };
@@ -194,10 +271,12 @@ export function registerGenerationTools(server: McpServer): void {
     {
       prompt: z.string().min(1).describe("The concise prompt or concept to expand"),
       reference_images: z.array(z.string()).max(10).optional().describe("Optional reference image names"),
-      wait: z.boolean().default(true).describe("Whether to wait for prompt enhancement to complete (usually takes 5-15s)"),
-      timeout_seconds: z.number().int().min(10).max(3600).default(180),
+      wait: z.boolean().default(true).describe("Wait for the text (5-15 s once the GPU is up)"),
+      timeout_seconds: z.number().int().min(10).max(3600).default(600).describe("Max seconds to wait (covers a cold GPU start)"),
+      cancel_on_timeout: CANCEL_ON_TIMEOUT,
     },
-    async ({ prompt, reference_images, wait, timeout_seconds }) => {
+    SUBMIT_ANNOTATIONS,
+    async ({ prompt, reference_images, wait, timeout_seconds, cancel_on_timeout }, extra) => {
       try {
         const job = await api.createJob({
           kind: "enhance",
@@ -211,7 +290,7 @@ export function registerGenerationTools(server: McpServer): void {
             finished.text
               ? `Enhanced Prompt:\n\n${finished.text}`
               : `Prompt enhancement finished:\n${formatJobSummary(finished)}`
-          );
+          , { cancelOnTimeout: cancel_on_timeout, onPoll: progressReporter(extra) });
           return { content: [{ type: "text", text }] };
         }
 
@@ -219,7 +298,7 @@ export function registerGenerationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Prompt enhancement job queued.\nJob ID: ${job.id}\nUse 'get_job' with this ID to read the enhanced text.`,
+              text: `Prompt enhancement queued. Job ID: ${job.id}\nCall wait_for_job with this ID to read the enhanced text.`,
             },
           ],
         };
@@ -245,9 +324,11 @@ export function registerGenerationTools(server: McpServer): void {
       reference_images: z.array(z.string()).max(2).optional().describe("Up to 2 reference image paths (first frame, optional second frame)"),
       thread_id: z.string().optional(),
       wait: z.boolean().default(false),
-      timeout_seconds: z.number().int().min(10).max(3600).default(api.JOB_TIMEOUT_SECONDS).describe("Timeout in seconds if wait is true; the job is cancelled when it expires"),
+      timeout_seconds: WAIT_TIMEOUT,
+      cancel_on_timeout: CANCEL_ON_TIMEOUT,
     },
-    async ({ prompt, quality, ratio, seconds, turbo, seed, reference_images, thread_id, wait, timeout_seconds }) => {
+    SUBMIT_ANNOTATIONS,
+    async ({ prompt, quality, ratio, seconds, turbo, seed, reference_images, thread_id, wait, timeout_seconds, cancel_on_timeout }, extra) => {
       try {
         if (quality === "768p" && seconds >= 10 && !turbo) {
           throw new Error("768p 10s video without turbo exceeds the 30-minute limit. Choose turbo: true or 480p.");
@@ -272,7 +353,7 @@ export function registerGenerationTools(server: McpServer): void {
         if (wait) {
           const text = await waitForJobText(job.id, timeout_seconds, 5, (finished) =>
             `Video generation finished!\n\n${formatJobSummary(finished)}`
-          );
+          , { cancelOnTimeout: cancel_on_timeout, onPoll: progressReporter(extra) });
           return { content: [{ type: "text", text }] };
         }
 
@@ -280,7 +361,7 @@ export function registerGenerationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Video generation job queued!\nJob ID: ${job.id}\n${formatJobSummary(job)}`,
+              text: queuedText("Video generation", job),
             },
           ],
         };
@@ -303,9 +384,11 @@ export function registerGenerationTools(server: McpServer): void {
       seed: z.number().int().min(0).max(4294967295).optional(),
       thread_id: z.string().optional(),
       wait: z.boolean().default(false),
-      timeout_seconds: z.number().int().min(10).max(3600).default(api.JOB_TIMEOUT_SECONDS).describe("Timeout in seconds if wait is true; the job is cancelled when it expires"),
+      timeout_seconds: WAIT_TIMEOUT,
+      cancel_on_timeout: CANCEL_ON_TIMEOUT,
     },
-    async ({ prompt, lyrics, seconds, seed, thread_id, wait, timeout_seconds }) => {
+    SUBMIT_ANNOTATIONS,
+    async ({ prompt, lyrics, seconds, seed, thread_id, wait, timeout_seconds, cancel_on_timeout }, extra) => {
       try {
         const params: Record<string, unknown> = {
           lyrics: lyrics || "",
@@ -324,7 +407,7 @@ export function registerGenerationTools(server: McpServer): void {
         if (wait) {
           const text = await waitForJobText(job.id, timeout_seconds, 5, (finished) =>
             `Music generation finished!\n\n${formatJobSummary(finished)}`
-          );
+          , { cancelOnTimeout: cancel_on_timeout, onPoll: progressReporter(extra) });
           return { content: [{ type: "text", text }] };
         }
 
@@ -332,7 +415,7 @@ export function registerGenerationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Music generation job queued!\nJob ID: ${job.id}\n${formatJobSummary(job)}`,
+              text: queuedText("Music generation", job),
             },
           ],
         };
@@ -347,14 +430,14 @@ export function registerGenerationTools(server: McpServer): void {
 
   server.tool(
     "generate_speech",
-    "Text-to-speech synthesis using Chatterbox (24 languages, Turkish included) or Qwen3-TTS (11 languages, no Turkish). Language must be supported by the chosen engine; the default follows the engine (chatterbox: Turkish, qwen3: Auto).",
+    "Text-to-speech with Chatterbox (24 languages incl. Turkish) or Qwen3-TTS (11 languages, no Turkish).",
     {
       text: z.string().min(1).describe("The speech text to synthesize"),
-      engine: z.enum(["chatterbox", "qwen3"]).default("chatterbox").describe("TTS engine: 'chatterbox' supports Turkish and 23 more languages, 'qwen3' has no Turkish support"),
+      engine: z.enum(["chatterbox", "qwen3"]).default("chatterbox"),
       language: z
         .enum(ALL_SPEECH_LANGUAGES)
         .optional()
-        .describe("Speech language. Defaults: chatterbox -> Turkish, qwen3 -> Auto. qwen3 supports only: Auto, English, Chinese, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian"),
+        .describe("Default: Turkish (chatterbox) / Auto (qwen3). qwen3 only: Auto, English, Chinese, Japanese, Korean, German, French, Russian, Portuguese, Spanish, Italian"),
       voice_preset: z.enum(["Vivian", "Serena", "Uncle_Fu", "Dylan", "Eric", "Ryan", "Aiden", "Ono_Anna", "Sohee"]).default("Vivian").describe("Voice preset for Qwen3-TTS"),
       instruct: z.string().optional().describe("Style/emotion instruction (e.g. 'whispering', 'cheerful')"),
       reference_text: z.string().optional().describe("Reference transcript if cloning voice"),
@@ -365,8 +448,10 @@ export function registerGenerationTools(server: McpServer): void {
       reference_audio: z.string().optional().describe("Optional path of uploaded audio file (e.g. 'uploads/sample.wav') for voice cloning"),
       thread_id: z.string().optional(),
       wait: z.boolean().default(false),
-      timeout_seconds: z.number().int().min(10).max(3600).default(api.JOB_TIMEOUT_SECONDS).describe("Timeout in seconds if wait is true; the job is cancelled when it expires"),
+      timeout_seconds: WAIT_TIMEOUT,
+      cancel_on_timeout: CANCEL_ON_TIMEOUT,
     },
+    SUBMIT_ANNOTATIONS,
     async ({
       text,
       engine,
@@ -382,7 +467,8 @@ export function registerGenerationTools(server: McpServer): void {
       thread_id,
       wait,
       timeout_seconds,
-    }) => {
+      cancel_on_timeout,
+    }, extra) => {
       try {
         const supported = SPEECH_LANGUAGES[engine];
         const resolvedLanguage = (language ?? DEFAULT_SPEECH_LANGUAGE[engine]).trim();
@@ -418,7 +504,7 @@ export function registerGenerationTools(server: McpServer): void {
         if (wait) {
           const textOut = await waitForJobText(job.id, timeout_seconds, 3, (finished) =>
             `Speech synthesis finished!\n\n${formatJobSummary(finished)}`
-          );
+          , { cancelOnTimeout: cancel_on_timeout, onPoll: progressReporter(extra) });
           return { content: [{ type: "text", text: textOut }] };
         }
 
@@ -426,7 +512,7 @@ export function registerGenerationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Speech job queued!\nJob ID: ${job.id}\n${formatJobSummary(job)}`,
+              text: queuedText("Speech synthesis", job),
             },
           ],
         };
@@ -446,9 +532,11 @@ export function registerGenerationTools(server: McpServer): void {
       audio_file: z.string().min(1).describe("Uploaded audio filename (e.g. 'uploads/record.mp3')"),
       language: z.enum(["auto", "Turkish", "English", "German", "French", "Spanish", "Italian", "Russian", "Arabic", "Japanese"]).default("auto"),
       wait: z.boolean().default(true).describe("Whether to wait for transcription to complete"),
-      timeout_seconds: z.number().int().min(10).max(3600).default(300),
+      timeout_seconds: z.number().int().min(10).max(3600).default(600).describe("Max seconds to wait (covers a cold GPU start)"),
+      cancel_on_timeout: CANCEL_ON_TIMEOUT,
     },
-    async ({ audio_file, language, wait, timeout_seconds }) => {
+    SUBMIT_ANNOTATIONS,
+    async ({ audio_file, language, wait, timeout_seconds, cancel_on_timeout }, extra) => {
       try {
         const job = await api.createJob({
           kind: "transcribe",
@@ -462,7 +550,7 @@ export function registerGenerationTools(server: McpServer): void {
             finished.text
               ? `Transcription Result:\n\n${finished.text}`
               : `Transcription finished:\n${formatJobSummary(finished)}`
-          );
+          , { cancelOnTimeout: cancel_on_timeout, onPoll: progressReporter(extra) });
           return { content: [{ type: "text", text }] };
         }
 
@@ -470,7 +558,7 @@ export function registerGenerationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Transcription job queued.\nJob ID: ${job.id}\nUse 'get_job' to check result.`,
+              text: `Transcription queued. Job ID: ${job.id}\nCall wait_for_job with this ID to read the text.`,
             },
           ],
         };
@@ -495,9 +583,11 @@ export function registerGenerationTools(server: McpServer): void {
       seed: z.number().int().min(0).max(4294967295).optional(),
       thread_id: z.string().optional(),
       wait: z.boolean().default(false),
-      timeout_seconds: z.number().int().min(10).max(3600).default(api.JOB_TIMEOUT_SECONDS).describe("Timeout in seconds if wait is true; the job is cancelled when it expires"),
+      timeout_seconds: WAIT_TIMEOUT,
+      cancel_on_timeout: CANCEL_ON_TIMEOUT,
     },
-    async ({ image_file, prompt, resolution, texture, faces, seed, thread_id, wait, timeout_seconds }) => {
+    SUBMIT_ANNOTATIONS,
+    async ({ image_file, prompt, resolution, texture, faces, seed, thread_id, wait, timeout_seconds, cancel_on_timeout }, extra) => {
       try {
         const params: Record<string, unknown> = {
           resolution: parseInt(resolution, 10),
@@ -517,7 +607,7 @@ export function registerGenerationTools(server: McpServer): void {
         if (wait) {
           const text = await waitForJobText(job.id, timeout_seconds, 5, (finished) =>
             `3D generation finished!\n\n${formatJobSummary(finished)}`
-          );
+          , { cancelOnTimeout: cancel_on_timeout, onPoll: progressReporter(extra) });
           return { content: [{ type: "text", text }] };
         }
 
@@ -525,7 +615,7 @@ export function registerGenerationTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `3D model generation job queued!\nJob ID: ${job.id}\n${formatJobSummary(job)}`,
+              text: queuedText("3D model generation", job),
             },
           ],
         };
@@ -540,18 +630,20 @@ export function registerGenerationTools(server: McpServer): void {
 
   server.tool(
     "get_job",
-    "Check the status, real-time progress %, current stage, and outputs of any job (terminal statuses: done, error).",
+    "One-off check of a job's status, progress, stage, ETA and outputs. To wait for a result use wait_for_job, not repeated get_job calls.",
     {
       job_id: z.string().min(1).describe("The unique ID of the job"),
+      verbose: z.boolean().default(false).describe("Also return the raw job record"),
     },
-    async ({ job_id }) => {
+    { readOnlyHint: true },
+    async ({ job_id, verbose }) => {
       try {
         const job = await api.getJob(job_id);
         return {
           content: [
             {
               type: "text",
-              text: `${formatJobSummary(job)}\n\n=== Raw Job JSON ===\n${JSON.stringify(job, null, 2)}`,
+              text: verbose ? `${formatJobSummary(job)}\n\nRaw: ${JSON.stringify(job)}` : formatJobSummary(job),
             },
           ],
         };
@@ -566,17 +658,19 @@ export function registerGenerationTools(server: McpServer): void {
 
   server.tool(
     "wait_for_job",
-    "Wait/poll for a job until it reaches a terminal status (done or error). Cancelled jobs end with status error and are reported as cancelled. When the timeout expires the job is cancelled.",
+    "Block until a job is done or error and return its outputs; no tokens are spent while waiting. On timeout the job keeps running (unless cancel_on_timeout): call again. Cancelled jobs end as error and are reported as cancelled.",
     {
       job_id: z.string().min(1).describe("The unique ID of the job"),
-      timeout_seconds: z.number().int().min(10).max(7200).default(api.JOB_TIMEOUT_SECONDS).describe("Maximum seconds to wait (the job is cancelled when it expires)"),
+      timeout_seconds: z.number().int().min(10).max(7200).default(api.JOB_TIMEOUT_SECONDS).describe("Max seconds to wait"),
       poll_interval_seconds: z.number().int().min(1).max(30).default(3).describe("Polling interval in seconds"),
+      cancel_on_timeout: CANCEL_ON_TIMEOUT,
     },
-    async ({ job_id, timeout_seconds, poll_interval_seconds }) => {
+    { destructiveHint: false, idempotentHint: true },
+    async ({ job_id, timeout_seconds, poll_interval_seconds, cancel_on_timeout }, extra) => {
       try {
         const text = await waitForJobText(job_id, timeout_seconds, poll_interval_seconds, (job) =>
           `Job reached terminal status:\n\n${formatJobSummary(job)}`
-        );
+        , { cancelOnTimeout: cancel_on_timeout, onPoll: progressReporter(extra) });
         return { content: [{ type: "text", text }] };
       } catch (error: unknown) {
         return {
@@ -593,6 +687,7 @@ export function registerGenerationTools(server: McpServer): void {
     {
       job_id: z.string().min(1).describe("The unique ID of the job to cancel"),
     },
+    { destructiveHint: true, idempotentHint: true },
     async ({ job_id }) => {
       try {
         const job = await api.cancelJob(job_id);

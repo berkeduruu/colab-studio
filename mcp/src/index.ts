@@ -11,7 +11,18 @@ import { registerResources } from "./resources.js";
 import { registerPrompts } from "./prompts.js";
 
 const SERVER_NAME = "colab-studio";
-const SERVER_VERSION = "1.0.0";
+const SERVER_VERSION = "1.1.0";
+
+/**
+ * İstemcinin sistem istemine eklenen kısa kullanım kılavuzu: gereksiz durum sorgularını, `get_job`
+ * döngülerini ve dosyaları base64 olarak taşımayı önler.
+ */
+const SERVER_INSTRUCTIONS = `Media generation on a shared Colab L4 GPU behind a single job queue.
+- Call generate_* / enhance_prompt / transcribe_audio directly. A job starts the GPU by itself (cold start ~4-5 min) and downloads that job's models first. Do not call colab_runtime_status or colab_runtime_start beforehand; colab_runtime_start only pre-warms and always prepares the image models first.
+- Submit with wait:false, then call wait_for_job once: it blocks without spending tokens and returns the outputs. Do not poll get_job in a loop. When timeout_seconds runs out the job keeps running (unless cancel_on_timeout:true); call wait_for_job again. If your client has a short tool timeout, pass a timeout_seconds below it.
+- Outputs are media names (e.g. abc_0.png) with a public URL. Output names can be passed straight back as inputs (reference_images, image_file). To save a file locally, download its URL; use get_media_base64 only to look at a result (small JPEG preview; videos come back as a 2x2 frame sheet).
+- Inputs: upload_media with source_url (the server downloads it) instead of base64 for anything but tiny files.
+- Other clients may share the queue: a job can wait behind theirs. Look at colab_runtime_status only if a job seems stuck.`;
 
 /**
  * Her bağlantı kendi sunucusunu alır: tek bir `McpServer`e ikinci kez `connect` çağrısı
@@ -33,6 +44,7 @@ function createServerFactory(): () => McpServer {
     const server = new McpServer(
       { name: SERVER_NAME, version: SERVER_VERSION },
       {
+        instructions: SERVER_INSTRUCTIONS,
         capabilities: {
           tools: {},
           resources: {},

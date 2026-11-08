@@ -34,7 +34,8 @@ claude mcp add colab-studio -- ssh -T my-server node /path/to/colab-studio/mcp/d
 | `STUDIO_URL` | `http://127.0.0.1:$STUDIO_PORT` | Studio API address. |
 | `STUDIO_DATA` | `~/.local/share/colab-studio` | Studio data directory (media lives in `media/`). |
 | `STUDIO_PUBLIC_MEDIA_URL` | `$STUDIO_URL/media` | Base URL returned for media files. |
-| `COLAB_BIN` | `colab` | colab CLI, for `colab_sessions_raw`. |
+| `COLAB_BIN` | `colab` | colab CLI, for `get_system_status` and `colab_sessions_raw`. |
+| `MCP_ADMIN_TOOLS` | off | `1` also lists the admin tools `delete_thread`, `update_setting`, `restart_colab_studio`, `colab_sessions_raw`. Off keeps the tool list short and stops one agent from interrupting another agent's work on the same studio. |
 | `MCP_TRANSPORT` | stdio | `sse` (or `--sse`) serves HTTP/SSE instead. |
 | `MCP_HOST` / `MCP_PORT` | `127.0.0.1` / `8195` | SSE listen address (`--host`, `--port`). |
 | `MCP_HTTP_TOKEN` | empty | If set, every SSE request needs `Authorization: Bearer <token>`; only `GET /health` (a liveness check that reveals nothing) answers without it. |
@@ -43,13 +44,33 @@ claude mcp add colab-studio -- ssh -T my-server node /path/to/colab-studio/mcp/d
 ## Tools
 
 - **GPU:** `colab_runtime_status`, `colab_runtime_start`, `colab_runtime_stop`, `colab_runtime_toggle_auto`,
-  `colab_runtime_metrics`, `colab_runtime_logs`, `colab_sessions_raw`
+  `colab_runtime_metrics`, `colab_runtime_logs`. A job starts the GPU by itself and downloads that job's
+  models first, so the status and start tools are not needed before generating.
 - **Generation:** `generate_image`, `enhance_prompt`, `generate_video`, `generate_music`, `generate_speech`,
-  `transcribe_audio`, `generate_3d` (each accepts `wait: true` to block until the job finishes)
+  `transcribe_audio`, `generate_3d`
 - **Jobs:** `get_job`, `wait_for_job`, `cancel_job`
-- **Media:** `list_media`, `get_media_base64` (lets Claude see an image), `upload_media`
-- **Studio:** `list_threads`, `get_thread`, `delete_thread`, `list_presets`, `save_preset`, `delete_preset`,
-  `get_settings`, `update_setting`, `get_system_status`, `restart_colab_studio` (only with `install.sh --service`)
+- **Media:** `list_media`, `get_media_base64` (a downscaled JPEG preview of an image, or a 2x2 frame sheet of
+  a video, so Claude can look at a result), `upload_media` (from a `source_url` the server downloads, or
+  base64 for small files)
+- **Studio:** `list_threads`, `get_thread`, `list_presets`, `save_preset`, `delete_preset`, `get_settings`,
+  `get_system_status`
+- **Admin** (only with `MCP_ADMIN_TOOLS=1`): `delete_thread`, `update_setting`, `colab_sessions_raw`,
+  `restart_colab_studio` (only with `install.sh --service`)
 
 Job states are the studio's own: `queued`, `waiting_gpu`, `running`, `done`, `error` (a cancelled
 job ends as `error`; the tools report it as cancelled).
+
+### Waiting for results
+
+Submit a job, then call `wait_for_job` once: it blocks until the job is done (no tokens are spent while it
+waits) and returns the output names and URLs. The generation tools also take `wait: true` to do both in one
+call. When `timeout_seconds` runs out the job **keeps running** and the tool says so; call `wait_for_job`
+again. Pass `cancel_on_timeout: true` to cancel it instead. If the client sends a progress token, the server
+reports each stage and percentage change as an MCP progress notification.
+
+### Keeping token use low
+
+Replies are short summaries; `verbose: true` adds the raw JSON (`get_job`, `colab_runtime_status`,
+`colab_runtime_metrics`, `list_threads`, `get_thread`). The server also sends clients a short usage guide
+(MCP `instructions`). Media previews need `ffmpeg` on the studio machine; without it the original image is
+sent. To copy a file to your computer, download its URL rather than reading it through the MCP.
