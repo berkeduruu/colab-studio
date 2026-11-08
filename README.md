@@ -38,7 +38,7 @@ Pick the way that fits where you run it:
 
 | You want to run it on | Use | You need |
 | --- | --- | --- |
-| A Linux computer or server | [the installer](#installer) (`./install.sh`) | `curl`, `ssh`, `tar`, `python3` |
+| A Linux computer or server | [the installer](#installer) (`./install.sh`) | `git`, `curl`, `ssh` (with `ssh-keygen`), `tar`, `python3` |
 | Any system with Docker | [Docker](#docker) | Docker Compose v2.24 or newer |
 | Windows | [Docker](#docker), or [WSL2](https://learn.microsoft.com/windows/wsl/install) with Ubuntu and then [the installer](#installer) inside it | |
 | A server that others open by a domain name | either of the above, then [nginx + HTTPS + password](#opening-it-from-other-devices) | a domain pointing at the server |
@@ -59,8 +59,10 @@ cd colab-studio
 
 It asks three questions (who may open the UI, the port, an optional Hugging Face token), writes them
 to `.env`, and offers the [Google sign-in](#google-sign-in-once). It installs everything else it
-needs (uv, Python 3.12, the Colab CLI); Node.js 20+ is optional: without it a prebuilt UI is
-downloaded. Then open <http://127.0.0.1:8190/> and send a prompt; the first one starts the GPU.
+needs (uv, Python 3.12, the Colab CLI); Node.js 20.19+ or 22.12+ is optional: without it (or if the
+build fails) a prebuilt UI is downloaded. Then open the address it prints at the end (default
+<http://127.0.0.1:8190/>) and send a prompt; the first one starts the GPU. On Debian/Ubuntu:
+`sudo apt install git curl openssh-client tar python3`.
 
 A free [Hugging Face token](https://huggingface.co/settings/tokens) (read access) is optional: models
 download without one, but anonymous downloads are slower and can be rate-limited.
@@ -90,17 +92,22 @@ would otherwise stop the studio).
 
 ```bash
 docker compose run --rm studio colab usage          # one-time Google sign-in, see below
-docker compose up -d                                # http://127.0.0.1:8190/
+docker compose up -d                                # http://127.0.0.1:8190/ (or your STUDIO_PORT)
 ```
 
-The first command builds the image (about a minute); later starts reuse it. Chats and media live in
+The first command builds the image (a few minutes, about 650 MB; a `pull access denied` line before
+the build is normal); later starts reuse it. Chats and media live in
 the `studio-data` volume and the sign-in in the `colab-login` volume.
 
 The port is published on `127.0.0.1` (this computer only). To change the port, set a Hugging Face
 token or open the studio to other devices (`STUDIO_HOST=0.0.0.0`, no password: see
 [below](#opening-it-from-other-devices)), copy `.env.example` to `.env` and edit it **before** the
-first `docker compose up`. Restart with `docker compose up -d` after later changes. A custom
-`models.toml` can be mounted (see `docker-compose.yml`).
+first `docker compose up`. After later changes run `docker compose up -d`: it recreates the
+container with the new `.env` (`docker compose restart` keeps the old settings). Inside the container
+`STUDIO_HOST`, `STUDIO_PORT` and `STUDIO_DATA` are fixed by `docker-compose.yml`; `STUDIO_PORT` in
+`.env` only picks the published host port. A custom `models.toml` must be mounted (uncomment the line
+in `docker-compose.yml`). Older Compose versions fail with `env_file ... must be a string`; the
+distro `docker-compose` (v1) cannot read the file, install Docker's `docker-compose-plugin` instead.
 
 ### Google sign-in (once)
 
@@ -125,7 +132,7 @@ your compute units, so pick one of these:
 | Where it runs | How to open it |
 | --- | --- |
 | Your own computer | <http://127.0.0.1:8190/> (default, `STUDIO_HOST=127.0.0.1`) |
-| A server, just for you | SSH tunnel: `ssh -L 8190:127.0.0.1:8190 my-server`, then <http://127.0.0.1:8190/> |
+| A server, just for you | SSH tunnel: `ssh -N -L 8190:127.0.0.1:8190 user@your-server` (keep it open, or add `-f` to background it), then <http://127.0.0.1:8190/> |
 | A server, on a trusted network | `STUDIO_HOST=0.0.0.0` in `.env`, then `http://<server-ip>:8190/` (no password: use a firewall) |
 | A server with a domain name | `sudo ./deploy/setup-nginx.sh studio.example.com`: HTTPS (Let's Encrypt) and a password via nginx |
 
@@ -136,12 +143,17 @@ with your own reverse proxy, add the name yourself and restart.
 
 About `setup-nginx.sh`:
 
-- It is written for **Debian/Ubuntu**: it installs nginx, certbot and apache2-utils with apt and uses
-  `/etc/nginx/sites-available`. On other systems use your own reverse proxy;
+- It is written for **Debian/Ubuntu with systemd**: it installs nginx, certbot and apache2-utils with
+  apt and uses `/etc/nginx/sites-available`; other sites on the same nginx are left alone. On other systems use your own reverse proxy;
   [`deploy/nginx.conf.template`](deploy/nginx.conf.template) is a starting point.
 - Ports **80 and 443** must be reachable from the internet (Let's Encrypt checks the domain), and
   `STUDIO_HOST` must stay `127.0.0.1` so the studio is only reachable through nginx.
-- Any DNS name pointing at the server works, including free ones such as `<ip-with-dashes>.sslip.io`.
+- Any DNS name pointing at the server works. Free names such as `<ip-with-dashes>.sslip.io` usually
+  work too, but Let's Encrypt counts its weekly certificate limit for `sslip.io` as a whole, shared by
+  all its users, so issuance can fail with a rate-limit error; your own domain avoids that.
+- It manages **one** studio site: running it again with another domain replaces the previous one.
+  If anything fails (certificate, nginx test, Ctrl+C), the previous nginx configuration is put back.
+  An e-mail for Let's Encrypt can be passed as a second argument.
 - It asks for the username and password on the terminal. For scripts or CI set `STUDIO_USER` and
   `STUDIO_PASSWORD` instead (`sudo STUDIO_PASSWORD=... ./deploy/setup-nginx.sh studio.example.com`);
   with neither a terminal nor those variables it uses the user `studio` and prints a generated password.
@@ -202,20 +214,22 @@ flowchart LR
 
 ## Configuration
 
-All settings live in `.env` (created from [`.env.example`](.env.example)). Restart after changes
-(`systemctl --user restart colab-studio`, `docker compose restart`, or Ctrl+C and `./run.sh`).
+All settings live in `.env` (created from [`.env.example`](.env.example)); a variable already exported
+in your shell wins over `.env`. Restart after changes: `systemctl --user restart colab-studio`
+(service), `docker compose up -d` (Docker; `restart` would keep the old values), or Ctrl+C and
+`./run.sh`. An invalid value (e.g. `STUDIO_PORT=abc`) stops the studio with a message naming it.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `STUDIO_HOST` | `127.0.0.1` | Listen address. `0.0.0.0` makes the UI reachable by IP (no password). |
 | `STUDIO_PORT` | `8190` | Web UI port. |
-| `STUDIO_ALLOWED_HOSTS` | empty | Domain names the UI may be opened by, comma-separated. IP addresses and `localhost` always work; other names get 403 (DNS rebinding protection). |
+| `STUDIO_ALLOWED_HOSTS` | empty | Domain names the UI may be opened by, comma-separated (`a.example.com,b.example.com`). IP addresses, `localhost` and `*.localhost` always work; other names get 403 (DNS rebinding protection). `*` turns the check off: only behind your own proxy. |
 | `HF_TOKEN` | empty | Hugging Face read token; needed only for gated repos, recommended against rate limits. |
-| `STUDIO_IDLE_MINUTES` | `15` | Release the GPU after this many idle minutes (can also be toggled in the UI). |
-| `STUDIO_DATA` | `~/.local/share/colab-studio` | Chats, media, learned timings and the studio's own SSH key. |
-| `STUDIO_MODELS` | `./models.toml` if present, else `station/models.default.toml` | Model catalog, see [Models](docs/models.md). |
-| `COLAB_BIN` | `colab` on `PATH` | Path to the Colab CLI. |
-| `STUDIO_SESSION` | `studio` | Name of the Colab session the studio owns; your other sessions are never touched. |
+| `STUDIO_IDLE_MINUTES` | `15` | Release the GPU after this many idle minutes. The switch in the UI only turns this off or on until the next restart. |
+| `STUDIO_DATA` | `~/.local/share/colab-studio` (Docker: the `studio-data` volume) | Chats, media, learned timings and the studio's own SSH key. |
+| `STUDIO_MODELS` | `models.toml` in the repository root if present, else `station/models.default.toml` | Model catalog, see [Models](docs/models.md). |
+| `COLAB_BIN` | `colab` on `PATH`, else `~/.local/bin/colab` | Path to the Colab CLI. |
+| `STUDIO_SESSION` | `studio` | Name of the Colab session the studio owns; your other sessions are never touched (so do not use this name yourself). |
 
 Only the L4 GPU is supported: the workflows, VRAM budgets and time estimates were all measured on it.
 
@@ -230,7 +244,9 @@ tells you and leaves the restart to you). Started with `./run.sh`: restart it yo
 `git pull && docker compose up -d --build`.
 
 Without Node.js, `install.sh` downloads the prebuilt UI of the release in `VERSION`. If the code you
-pulled has newer UI changes than that release, it says so; install Node.js 20+ to build the matching UI.
+pulled has newer UI changes than that release, it says so (this needs git history: with a `--depth 1`
+clone or a ZIP download it cannot tell, and says that instead); install Node.js 20.19+ or 22.12+ to
+build the matching UI.
 
 ## Uninstalling
 
@@ -248,12 +264,13 @@ uv and the Colab CLI (`uv tool uninstall google-colab-cli`) are left alone. Dock
 
 | Symptom | Fix |
 | --- | --- |
-| "colab CLI is not signed in" | Do the [Google sign-in](#google-sign-in-once), then start the GPU again. No restart needed. |
-| 403 "the host name ... is not allowed" | You opened the studio by a domain name. Add it to `STUDIO_ALLOWED_HOSTS` in `.env` and restart. |
+| "The colab CLI is not signed in to Google" (red notice) | Do the [Google sign-in](#google-sign-in-once), then press Start again. No restart needed; the notice stays until that next start. |
+| 403 "the host name ... is not allowed" | You opened the studio by a domain name. Add it to `STUDIO_ALLOWED_HOSTS` in `.env` and restart (Docker: `docker compose up -d`). |
 | GPU start fails at "Allocating GPU" | No L4 available or no compute units left. Check `colab usage`, try again later. |
 | Downloads are slow or fail with 429 | Set `HF_TOKEN` in `.env` and restart. |
 | A job fails after you changed `models.toml` | The new file is probably a different architecture; see [Models](docs/models.md). |
-| Anything else | The log button (top right) shows the GPU start log; `journalctl --user -u colab-studio` the service log. |
+| "port ... is already in use" | Another Colab Studio (or another program) uses the port. Stop it or set another `STUDIO_PORT`. Docker: change it, then `docker compose up -d --force-recreate`. |
+| Anything else | The log button (top right) shows the GPU start log. The studio's own output is in the terminal running `./run.sh`; with `--service`: `journalctl --user -u colab-studio`; Docker: `docker compose logs`. |
 
 The studio only ever releases the Colab session it created (`STUDIO_SESSION`). If it was killed
 while a GPU was running, it releases that runtime on its next start.
@@ -285,9 +302,13 @@ remote (SSH) setups and the tool list.
 ## Development
 
 ```bash
-./test.sh          # lint + Playwright UI tests (mocked API) + pytest; no GPU needed (installs Chromium on first run)
+./test.sh          # lint + pytest + Playwright UI tests (mocked API); no GPU needed (installs Chromium on first run)
 python3 server/tests/gpu_smoke.py   # one job per mode on a real GPU (spends compute units)
 ```
+
+`./test.sh` needs `uv` (run `./install.sh` first, or install it yourself) and Node.js 20.19+/22.12+ with npm.
+If Chromium cannot start for lack of system libraries, run `npx playwright install-deps chromium` once
+(in `server/web`, needs sudo).
 
 | Path | Contents |
 | --- | --- |

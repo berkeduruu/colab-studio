@@ -29,16 +29,18 @@ if [[ -x .venv/bin/python ]] && .venv/bin/python -c 'import aiohttp' 2>/dev/null
 else
   fail "Python environment is missing or broken: run ./install.sh"
 fi
-if [[ -f server/web/dist/index.html ]]; then
+if [[ -f server/web/dist/index.html ]] && compgen -G "server/web/dist/assets/*.js" >/dev/null; then
   ok "web UI is built"
 else
-  fail "web UI is missing: run ./install.sh (builds it with Node.js 20+, or downloads the prebuilt release)"
+  fail "web UI is missing or incomplete: rm -rf server/web/dist && ./install.sh (builds it with Node.js 20.19+/22.12+, or downloads the prebuilt release)"
 fi
 if command -v node >/dev/null; then
-  node_major=$(node -p 'process.versions.node.split(".")[0]')
-  if (( node_major >= 22 )); then ok "Node.js $(node --version) (also enough for the MCP server)"
-  elif (( node_major >= 20 )); then ok "Node.js $(node --version) (builds the UI; the MCP server needs 22+)"
-  else warn "Node.js $(node --version) is too old to build the UI (20+) or run the MCP server (22+)"; fi
+  node_v=$(node -p 'process.versions.node')
+  node_major=${node_v%%.*}; node_minor=${node_v#*.}; node_minor=${node_minor%%.*}
+  if (( (node_major == 22 && node_minor >= 12) || node_major > 22 )); then ok "Node.js $(node --version) (also enough for the MCP server)"
+  elif (( node_major == 22 )); then ok "Node.js $(node --version) (runs the MCP server; building the UI needs 22.12+, the prebuilt UI is used instead)"
+  elif (( node_major == 20 && node_minor >= 19 )); then ok "Node.js $(node --version) (builds the UI; the MCP server needs 22+)"
+  else warn "Node.js $(node --version) cannot build the UI (needs 20.19+ or 22.12+; the prebuilt UI is used instead) or run the MCP server (22+)"; fi
 else
   warn "Node.js not found: fine for the studio (prebuilt UI), needed only to build the UI or run the MCP server"
 fi

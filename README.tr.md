@@ -38,7 +38,7 @@ Nerede çalıştıracağına göre yolu seç:
 
 | Nerede çalıştıracaksın | Kullan | Gerekenler |
 | --- | --- | --- |
-| Linux bilgisayar ya da sunucu | [kurulum betiği](#kurulum-betiği) (`./install.sh`) | `curl`, `ssh`, `tar`, `python3` |
+| Linux bilgisayar ya da sunucu | [kurulum betiği](#kurulum-betiği) (`./install.sh`) | `git`, `curl`, `ssh` (`ssh-keygen` ile), `tar`, `python3` |
 | Docker olan her sistem | [Docker](#docker) | Docker Compose v2.24 ya da üstü |
 | Windows | [Docker](#docker), ya da Ubuntu'lu [WSL2](https://learn.microsoft.com/tr-tr/windows/wsl/install) ve içinde [kurulum betiği](#kurulum-betiği) | |
 | Başkalarının alan adıyla açacağı bir sunucu | yukarıdakilerden biri, sonra [nginx + HTTPS + parola](#başka-cihazlardan-açmak) | sunucuyu gösteren bir alan adı |
@@ -59,8 +59,10 @@ cd colab-studio
 
 Üç soru sorar (arayüzü kimin açabileceği, port, isteğe bağlı Hugging Face token'ı), cevapları `.env`'e
 yazar ve [Google girişini](#google-girişi-bir-kez) önerir. Gerisini kendisi kurar (uv, Python 3.12, Colab
-CLI); Node.js 20+ isteğe bağlıdır: yoksa hazır derlenmiş arayüz indirilir. Sonra
-<http://127.0.0.1:8190/> adresini aç ve bir istem gönder; ilk istek GPU'yu açar.
+CLI); Node.js 20.19+ ya da 22.12+ isteğe bağlıdır: yoksa (ya da derleme başarısız olursa) hazır
+derlenmiş arayüz indirilir. Sonra sonunda yazdırdığı adresi aç (varsayılan <http://127.0.0.1:8190/>)
+ve bir istem gönder; ilk istek GPU'yu açar. Debian/Ubuntu'da:
+`sudo apt install git curl openssh-client tar python3`.
 
 Ücretsiz bir [Hugging Face token'ı](https://huggingface.co/settings/tokens) (okuma yetkisi) isteğe
 bağlıdır: modeller token olmadan da iner ama girişsiz indirme daha yavaş ve hız sınırına takılabilir.
@@ -90,17 +92,23 @@ otomatik durmasın).
 
 ```bash
 docker compose run --rm studio colab usage          # tek seferlik Google girişi, aşağıya bak
-docker compose up -d                                # http://127.0.0.1:8190/
+docker compose up -d                                # http://127.0.0.1:8190/ (ya da STUDIO_PORT'un)
 ```
 
-İlk komut imajı build eder (yaklaşık bir dakika); sonraki açılışlar hazır imajı kullanır. Sohbetler ve
+İlk komut imajı build eder (birkaç dakika, yaklaşık 650 MB; build'den önceki `pull access denied`
+satırı normaldir); sonraki açılışlar hazır imajı kullanır. Sohbetler ve
 medya `studio-data`, giriş bilgisi `colab-login` volume'unda durur.
 
 Port yalnızca `127.0.0.1`'de (sadece bu bilgisayar) yayımlanır. Portu değiştirmek, Hugging Face
 token'ı vermek ya da stüdyoyu başka cihazlara açmak için (`STUDIO_HOST=0.0.0.0`, şifresiz: bkz.
 [aşağısı](#başka-cihazlardan-açmak)) ilk `docker compose up`'tan **önce** `.env.example`'ı `.env`
-olarak kopyalayıp düzenle. Sonraki değişikliklerden sonra `docker compose up -d` ile yeniden başlat.
-Özel bir `models.toml` bağlanabilir (bkz. `docker-compose.yml`).
+olarak kopyalayıp düzenle. Sonraki değişikliklerden sonra `docker compose up -d` çalıştır: konteyneri
+yeni `.env` ile yeniden oluşturur (`docker compose restart` eski ayarları korur). Konteynerin içinde
+`STUDIO_HOST`, `STUDIO_PORT` ve `STUDIO_DATA` `docker-compose.yml` tarafından sabitlenir; `.env`'deki
+`STUDIO_PORT` yalnızca yayımlanan host portunu seçer. Özel bir `models.toml` bağlanmalıdır
+(`docker-compose.yml`'deki satırın yorumunu kaldır). Eski Compose sürümleri `env_file ... must be a
+string` hatası verir; dağıtımın `docker-compose` (v1) paketi dosyayı okuyamaz, bunun yerine Docker'ın
+`docker-compose-plugin` paketini kur.
 
 ### Google girişi (bir kez)
 
@@ -125,7 +133,7 @@ harcayabilir. Bu yüzden şunlardan birini seç:
 | Nerede çalışıyor | Nasıl açılır |
 | --- | --- |
 | Kendi bilgisayarında | <http://127.0.0.1:8190/> (varsayılan, `STUDIO_HOST=127.0.0.1`) |
-| Sunucuda, yalnızca sen | SSH tüneli: `ssh -L 8190:127.0.0.1:8190 sunucum`, sonra <http://127.0.0.1:8190/> |
+| Sunucuda, yalnızca sen | SSH tüneli: `ssh -N -L 8190:127.0.0.1:8190 kullanici@sunucun` (açık tut ya da arka plana atmak için `-f` ekle), sonra <http://127.0.0.1:8190/> |
 | Sunucuda, güvendiğin bir ağda | `.env`'de `STUDIO_HOST=0.0.0.0`, sonra `http://<sunucu-ip>:8190/` (şifre yok: güvenlik duvarı kullan) |
 | Alan adı olan bir sunucuda | `sudo ./deploy/setup-nginx.sh studio.ornek.com`: nginx ile HTTPS (Let's Encrypt) ve şifre |
 
@@ -136,12 +144,17 @@ ters vekil sunucunu (reverse proxy) kullanıyorsan adı kendin ekleyip yeniden b
 
 `setup-nginx.sh` hakkında:
 
-- **Debian/Ubuntu** için yazıldı: nginx, certbot ve apache2-utils'i apt ile kurar ve
-  `/etc/nginx/sites-available` kullanır. Başka sistemlerde kendi ters vekil sunucunu kullan;
+- **systemd'li Debian/Ubuntu** için yazıldı: nginx, certbot ve apache2-utils'i apt ile kurar ve
+  `/etc/nginx/sites-available` kullanır; aynı nginx'teki diğer sitelere dokunmaz. Başka sistemlerde kendi ters vekil sunucunu kullan;
   [`deploy/nginx.conf.template`](deploy/nginx.conf.template) bir başlangıç noktasıdır.
 - **80 ve 443** portları internetten erişilebilir olmalı (Let's Encrypt alan adını denetler) ve
   stüdyo yalnızca nginx üzerinden erişilsin diye `STUDIO_HOST` `127.0.0.1` kalmalı.
-- Sunucuyu gösteren her DNS adı olur; `<tireli-ip>.sslip.io` gibi ücretsiz adlar da.
+- Sunucuyu gösteren her DNS adı olur. `<tireli-ip>.sslip.io` gibi ücretsiz adlar da genelde çalışır,
+  ama Let's Encrypt haftalık sertifika sınırını tüm `sslip.io` için, bütün kullanıcıları arasında
+  paylaşarak sayar; bu yüzden sertifika alma sınır hatasıyla düşebilir. Kendi alan adın bunu önler.
+- **Tek** bir stüdyo sitesi yönetir: başka bir alan adıyla tekrar çalıştırmak öncekinin yerine geçer.
+  Bir şey başarısız olursa (sertifika, nginx testi, Ctrl+C) önceki nginx yapılandırması geri konur.
+  Let's Encrypt için bir e-posta ikinci argüman olarak verilebilir.
 - Kullanıcı adı ve parolayı terminalden sorar. Betik ya da CI için bunun yerine `STUDIO_USER` ve
   `STUDIO_PASSWORD` ver (`sudo STUDIO_PASSWORD=... ./deploy/setup-nginx.sh studio.ornek.com`); terminal de
   bu değişkenler de yoksa `studio` kullanıcısı ve üretilmiş bir parola kullanılır (parola ekrana basılır).
@@ -202,20 +215,22 @@ flowchart LR
 
 ## Yapılandırma
 
-Tüm ayarlar `.env` dosyasında ([`.env.example`](.env.example)'dan oluşturulur). Değişiklikten sonra
-yeniden başlat (`systemctl --user restart colab-studio`, `docker compose restart` ya da Ctrl+C ve `./run.sh`).
+Tüm ayarlar `.env` dosyasında ([`.env.example`](.env.example)'dan oluşturulur); kabukta zaten export
+edilmiş bir değişken `.env`'i ezer. Değişiklikten sonra yeniden başlat: `systemctl --user restart
+colab-studio` (servis), `docker compose up -d` (Docker; `restart` eski değerleri korur) ya da Ctrl+C ve
+`./run.sh`. Geçersiz bir değer (ör. `STUDIO_PORT=abc`) stüdyoyu, değişkeni adıyla anan bir mesajla durdurur.
 
 | Değişken | Varsayılan | Anlamı |
 | --- | --- | --- |
 | `STUDIO_HOST` | `127.0.0.1` | Dinlenen adres. `0.0.0.0` arayüzü IP ile erişilebilir yapar (şifresiz). |
 | `STUDIO_PORT` | `8190` | Arayüz portu. |
-| `STUDIO_ALLOWED_HOSTS` | boş | Arayüzün açılabileceği alan adları, virgülle ayrılmış. IP adresleri ve `localhost` her zaman çalışır; diğer adlar 403 alır (DNS rebinding koruması). |
+| `STUDIO_ALLOWED_HOSTS` | boş | Arayüzün açılabileceği alan adları, virgülle ayrılmış (`a.ornek.com,b.ornek.com`). IP adresleri, `localhost` ve `*.localhost` her zaman çalışır; diğer adlar 403 alır (DNS rebinding koruması). `*` denetimi kapatır: yalnızca kendi vekil sunucunun arkasında. |
 | `HF_TOKEN` | boş | Hugging Face okuma token'ı; yalnızca erişimi kısıtlı (gated) repolar için gerekli, hız sınırına karşı önerilir. |
-| `STUDIO_IDLE_MINUTES` | `15` | GPU bu kadar dakika boşta kalınca kapatılır (arayüzden de açılıp kapatılır). |
-| `STUDIO_DATA` | `~/.local/share/colab-studio` | Sohbetler, medya, öğrenilmiş süreler ve stüdyonun kendi SSH anahtarı. |
-| `STUDIO_MODELS` | varsa `./models.toml`, yoksa `station/models.default.toml` | Model kataloğu, bkz. [Modeller](docs/models.tr.md). |
-| `COLAB_BIN` | `PATH`'teki `colab` | Colab CLI'ın yolu. |
-| `STUDIO_SESSION` | `studio` | Stüdyonun sahip olduğu Colab oturumunun adı; diğer oturumlarına hiç dokunulmaz. |
+| `STUDIO_IDLE_MINUTES` | `15` | GPU bu kadar dakika boşta kalınca kapatılır. Arayüzdeki anahtar bunu yalnızca bir sonraki yeniden başlatmaya kadar kapatıp açar. |
+| `STUDIO_DATA` | `~/.local/share/colab-studio` (Docker: `studio-data` volume'u) | Sohbetler, medya, öğrenilmiş süreler ve stüdyonun kendi SSH anahtarı. |
+| `STUDIO_MODELS` | varsa repo kökündeki `models.toml`, yoksa `station/models.default.toml` | Model kataloğu, bkz. [Modeller](docs/models.tr.md). |
+| `COLAB_BIN` | `PATH`'teki `colab`, yoksa `~/.local/bin/colab` | Colab CLI'ın yolu. |
+| `STUDIO_SESSION` | `studio` | Stüdyonun sahip olduğu Colab oturumunun adı; diğer oturumlarına hiç dokunulmaz (bu adı kendin kullanma). |
 
 Yalnızca L4 GPU desteklenir: iş akışları, VRAM bütçeleri ve süre tahminlerinin hepsi L4'te ölçüldü.
 
@@ -230,7 +245,8 @@ söyler ve yeniden başlatmayı sana bırakır). `./run.sh` ile açtıysan kendi
 `git pull && docker compose up -d --build`.
 
 Node.js yoksa `install.sh`, `VERSION`'daki sürümün hazır arayüzünü indirir. Çektiğin kodda o sürümden
-yeni arayüz değişiklikleri varsa bunu söyler; uyumlu arayüzü derlemek için Node.js 20+ kur.
+yeni arayüz değişiklikleri varsa bunu söyler (bunun için git geçmişi gerekir: `--depth 1` klon ya da
+ZIP indirmede anlayamaz ve bunu söyler); uyumlu arayüzü derlemek için Node.js 20.19+ ya da 22.12+ kur.
 
 ## Kaldırma
 
@@ -248,12 +264,13 @@ uv ve Colab CLI (`uv tool uninstall google-colab-cli`) olduğu gibi kalır. Dock
 
 | Belirti | Çözüm |
 | --- | --- |
-| "colab CLI'da Google girişi yok" | [Google girişini](#google-girişi-bir-kez) yap, sonra GPU'yu tekrar başlat. Yeniden başlatmak gerekmez. |
-| 403 "the host name ... is not allowed" | Stüdyoyu bir alan adıyla açtın. Adı `.env`'deki `STUDIO_ALLOWED_HOSTS`'a ekle ve yeniden başlat. |
+| "colab CLI'da Google girişi yok" (kırmızı uyarı) | [Google girişini](#google-girişi-bir-kez) yap, sonra Başlat'a tekrar bas. Yeniden başlatmak gerekmez; uyarı o başlatmaya kadar ekranda kalır. |
+| 403 "the host name ... is not allowed" | Stüdyoyu bir alan adıyla açtın. Adı `.env`'deki `STUDIO_ALLOWED_HOSTS`'a ekle ve yeniden başlat (Docker: `docker compose up -d`). |
 | GPU açılışı "GPU ayrılıyor"da düşüyor | Boşta L4 yok ya da kredi bitti. `colab usage` ile bak, sonra tekrar dene. |
 | İndirme yavaş ya da 429 hatası | `.env`'e `HF_TOKEN` yaz ve yeniden başlat. |
 | `models.toml`'u değiştirdikten sonra iş hata veriyor | Yeni dosya büyük olasılıkla farklı bir mimaride; bkz. [Modeller](docs/models.tr.md). |
-| Diğer her şey | Sağ üstteki kayıtlar düğmesi GPU açılış kaydını, `journalctl --user -u colab-studio` servis kaydını gösterir. |
+| "port ... is already in use" | Portu başka bir Colab Studio (ya da başka bir program) kullanıyor. Onu durdur ya da başka bir `STUDIO_PORT` seç. Docker: değiştir, sonra `docker compose up -d --force-recreate`. |
+| Diğer her şey | Sağ üstteki kayıtlar düğmesi GPU açılış kaydını gösterir. Stüdyonun kendi çıktısı `./run.sh`'ın çalıştığı terminaldedir; `--service` ile: `journalctl --user -u colab-studio`; Docker: `docker compose logs`. |
 
 Stüdyo yalnızca kendi açtığı Colab oturumunu (`STUDIO_SESSION`) kapatır. GPU açıkken stüdyo
 öldürüldüyse bir sonraki açılışta o runtime'ı kapatır.
@@ -284,9 +301,13 @@ derler (`--mcp` onu senin için çalıştırır). Uzak (SSH) kurulum ve araç li
 ## Geliştirme
 
 ```bash
-./test.sh          # lint + Playwright arayüz testleri (sahte API) + pytest; GPU gerekmez (ilk çalıştırmada Chromium'u kurar)
+./test.sh          # lint + pytest + Playwright arayüz testleri (sahte API); GPU gerekmez (ilk çalıştırmada Chromium'u kurar)
 python3 server/tests/gpu_smoke.py   # gerçek GPU'da her moddan bir iş (kredi harcar)
 ```
+
+`./test.sh` için `uv` (önce `./install.sh` çalıştır ya da kendin kur) ve npm ile Node.js 20.19+/22.12+ gerekir.
+Chromium sistem kütüphaneleri eksik diye açılmazsa bir kez `npx playwright install-deps chromium` çalıştır
+(`server/web` içinde, sudo ister).
 
 | Yol | İçerik |
 | --- | --- |

@@ -14,7 +14,11 @@ import catalog
 PROMPTS = Path(__file__).parent / "prompts"
 
 # Model dosyaları katalogdan (models.toml); runtime aynı dosyaları indirir.
-CATALOG = catalog.load(config.MODELS_FILE)
+try:
+    CATALOG = catalog.load(config.MODELS_FILE)
+except catalog.CatalogError as e:
+    sys.exit(f"Colab Studio: the model catalog is not valid: {e}\n"
+             "Fix the file (see docs/models.md) and start the studio again.")
 _f = lambda mode, slot: catalog.filename(CATALOG, mode, slot)
 
 IMAGE_MODEL = _f("image", "diffusion_model")
