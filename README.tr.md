@@ -32,6 +32,11 @@
   <img src="docs/screenshots/hero.png" width="900" alt="Colab Stüdyo web arayüzü: görsel modu ve ayarlar paneli">
 </p>
 
+<p align="center">
+  <a href="https://berkeduruu.github.io/colab-studio/tr/#demo"><img src="docs/assets/demo-readme.jpg" width="900" alt="39 saniyelik tanıtım videosunu oynat"></a><br>
+  <sub>▶ <a href="https://berkeduruu.github.io/colab-studio/tr/#demo">39 saniyelik tanıtımı izle</a> · <a href="docs/assets/demo.mp4">MP4, 5 MB</a></sub>
+</p>
+
 ## Kurulum
 
 Nerede çalıştıracağına göre yolu seç:

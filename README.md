@@ -32,6 +32,11 @@
   <img src="docs/screenshots/hero.png" width="900" alt="Colab Studio web UI: image mode with the settings panel open">
 </p>
 
+<p align="center">
+  <a href="https://berkeduruu.github.io/colab-studio/#demo"><img src="docs/assets/demo-readme.jpg" width="900" alt="Play the 39-second demo video"></a><br>
+  <sub>▶ <a href="https://berkeduruu.github.io/colab-studio/#demo">Watch the 39-second demo</a> (on-screen text in Turkish) · <a href="docs/assets/demo.mp4">MP4, 5 MB</a></sub>
+</p>
+
 ## Install
 
 Pick the way that fits where you run it:
