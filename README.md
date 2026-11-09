@@ -304,7 +304,7 @@ API (`STUDIO_PORT` from `.env`).
 
 - Your `.env` (Hugging Face token) and Colab sign-in stay on your machine; the token is copied only
   to your own Colab runtime so it can download models.
-- Prompts, uploads and results are stored in `STUDIO_DATA` on your machine. Chats older than 30 days
+- Prompts, uploads and results are stored in `STUDIO_DATA` on your machine. Chats not used for 30 days
   are deleted automatically.
 - ComfyUI is never exposed to the network; the studio reaches it through its own SSH tunnel.
 - Write requests from other websites are rejected (CSRF protection), and so is every request that

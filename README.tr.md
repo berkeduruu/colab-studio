@@ -303,8 +303,8 @@ ve aynı komutla ekle: MCP sunucusu medya dahil her şeyi stüdyonun API'sinden 
 
 - `.env` dosyan (Hugging Face token'ı) ve Colab girişin senin makinende kalır; token yalnızca model
   indirebilmesi için kendi Colab runtime'ına kopyalanır.
-- İstemler, yüklemeler ve sonuçlar senin makinende `STUDIO_DATA` altında durur. 30 günden eski
-  sohbetler kendiliğinden silinir.
+- İstemler, yüklemeler ve sonuçlar senin makinende `STUDIO_DATA` altında durur. 30 gündür
+  kullanılmayan sohbetler kendiliğinden silinir.
 - ComfyUI ağa hiç açılmaz; stüdyo ona kendi SSH tüneliyle ulaşır.
 - Başka sitelerden gelen yazma istekleri (CSRF koruması) ve tanınmayan bir alan adıyla gelen her
   istek (DNS rebinding koruması, bkz. `STUDIO_ALLOWED_HOSTS`) reddedilir.

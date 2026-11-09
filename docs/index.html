@@ -56,7 +56,7 @@
           { "@type": "Question", "name": "Does the free Colab tier work?", "acceptedAnswer": { "@type": "Answer", "text": "No. The free tier does not offer L4 GPUs. You need Colab compute units: Colab Pro, Pro+ or pay as you go." } },
           { "@type": "Question", "name": "Can I use a T4 or an A100 instead?", "acceptedAnswer": { "@type": "Answer", "text": "No. The workflows, VRAM budgets and time estimates were all measured on the L4, so it is the only GPU supported." } },
           { "@type": "Question", "name": "Can I open it from my phone?", "acceptedAnswer": { "@type": "Answer", "text": "Yes: through an SSH tunnel, by IP on a trusted network, or on your own domain behind nginx with HTTPS and a password, set up by deploy/setup-nginx.sh." } },
-          { "@type": "Question", "name": "Where do my results live?", "acceptedAnswer": { "@type": "Answer", "text": "On your own machine. Results are copied back from the GPU and stay after it is released. Chats older than 30 days are deleted automatically." } },
+          { "@type": "Question", "name": "Where do my results live?", "acceptedAnswer": { "@type": "Answer", "text": "On your own machine. Results are copied back from the GPU and stay after it is released. Chats not used for 30 days are deleted automatically." } },
           { "@type": "Question", "name": "Can Claude Code use it?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The mcp folder contains an MCP server, so Claude Code or Claude Desktop can start the GPU, generate media, wait for jobs and look at the results." } },
           { "@type": "Question", "name": "Is it made by Google?", "acceptedAnswer": { "@type": "Answer", "text": "No. Colab Studio is an independent open-source project under AGPL-3.0. It uses Google's official Colab CLI." } }
         ]
@@ -204,7 +204,7 @@
           </details>
           <details>
             <summary>Where do my results live?</summary>
-            <div class="answer"><p>On your own machine. Results are copied back from the GPU and stay after it is released. Chats older than 30 days are deleted automatically.</p></div>
+            <div class="answer"><p>On your own machine. Results are copied back from the GPU and stay after it is released. Chats not used for 30 days are deleted automatically.</p></div>
           </details>
           <details>
             <summary>Can Claude Code use it?</summary>
