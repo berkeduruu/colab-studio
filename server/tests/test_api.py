@@ -174,6 +174,11 @@ async def test_input_kind_rules(client, upload):
         ("transcribe", {}, [voice, voice]),
         ("model3d", MODEL3D, [voice]),
         ("model3d", MODEL3D, [img, img]),
+        # ses dosyası referans görsel diye verilirse GPU açılmadan reddedilir
+        ("image", IMAGE, [voice]),
+        ("image", IMAGE, [img, voice]),
+        ("video", VIDEO, [voice]),
+        ("enhance", {}, [voice]),
     ]
     for kind, params, inputs in cases:
         r = await create(client, kind=kind, params=params, inputs=inputs)
@@ -276,6 +281,15 @@ async def test_settings_roundtrip(client):
     assert s["image.params"]["negative"] == "ugly" and s["mode"] == "video"
     assert (await client.put("/api/settings/bilinmeyen", json=1)).status == 400
     assert (await client.put("/api/settings/mode", data=b"{", headers={"Content-Type": "application/json"})).status == 400
+
+
+@pytest.mark.parametrize("key,value", [
+    ("mode", "nonsense-mode"), ("mode", 3), ("mode", None), ("mode", ["image"]), ("mode", {"a": 1}), ("image.params", "x"), ("image.params", [1]), ("video.params", None),
+])
+async def test_invalid_setting_values_are_rejected(client, key, value):
+    """Ayarlar her cihazda açılışta okunur: geçersiz mod arayüzü her yerde boş bırakıyordu."""
+    assert (await client.put(f"/api/settings/{key}", json=value)).status == 400
+    assert key not in await (await client.get("/api/settings")).json()
 
 
 async def test_presets(client):

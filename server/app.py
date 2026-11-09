@@ -348,6 +348,9 @@ async def job_create(request):
         bad("istem boş olamaz")
     if len(inputs) > 10:
         bad("en fazla 10 referans görsel")
+    # Yanlış türde girdi ancak GPU 4-5 dakikada açıldıktan sonra hata verirdi: burada reddedilir.
+    if kind in ("image", "video", "enhance") and any(Path(i).suffix not in IMAGE_TYPES.values() for i in inputs):
+        bad("referans dosyaları görsel olmalı")
     if kind == "image":
         mode, params = "image", image_params(body)
         # 2160p düzenlemede CFG > 1 VRAM'e sığmaz (batch 2), adım ~78 sn olur: ~33 dk, 30 dk sınırını aşar.
@@ -453,7 +456,13 @@ async def setting_put(request):
     key = request.match_info["key"]
     if key not in SETTING_KEYS:
         bad(f"bilinmeyen ayar: {key}")
-    studio.save_setting(key, await read_json(request))
+    value = await read_json(request)
+    # Ayarlar her cihazda açılışta okunur: geçersiz değer arayüzü her yerde bozardı.
+    if key == "mode" and (not isinstance(value, str) or value not in MODES):
+        bad(f"geçersiz mod: {value}")
+    if key != "mode" and not isinstance(value, dict):
+        bad(f"{key} bir nesne olmalı")
+    studio.save_setting(key, value)
     return web.json_response({"ok": True})
 
 
@@ -474,7 +483,7 @@ async def on_startup(app):
         # açılır; watchdog stüdyonun açtığı runtime'ı yeniden dener.
         try:
             await runtime.stop_runtime()
-        except RuntimeError as e:
+        except Exception as e:  # servis ne olursa olsun açılsın
             runtime.set_phase("error", runtime.short_error(e))
     app["tasks"] = [
         asyncio.create_task(runtime.watchdog(studio.has_pending_jobs, studio.record_credits)),

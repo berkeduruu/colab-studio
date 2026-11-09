@@ -2,6 +2,7 @@
 istatistikleri, açılış ilerlemesi ve hata metinleri."""
 import asyncio
 import json
+import os
 import time
 
 import runtime
@@ -108,6 +109,42 @@ async def test_cleanup_deletes_only_expired(db):
     task.cancel()
     assert studio.get_thread(old["id"]) is None
     assert studio.get_thread(new["id"]) is not None
+
+
+async def test_cleanup_counts_from_last_use_not_creation(db):
+    """31 gün önce açılıp dün kullanılan sohbet (ve çıktıları) kalır; 40 gündür dokunulmayan gider."""
+    day = 86400
+    used = studio.create_thread("image", "dün kullanıldı")
+    idle = studio.create_thread("image", "dokunulmadı")
+    waiting = studio.create_thread("image", "işi sırada")
+    j_used = studio.create_job(used["id"], "image", "image", "a", {"seed": 1}, [])
+    studio.create_job(idle["id"], "image", "image", "b", {"seed": 1}, [])
+    j_wait = studio.create_job(waiting["id"], "image", "image", "c", {"seed": 1}, [])
+    out = studio.MEDIA_DIR / "cikti.png"
+    out.write_bytes(b"png")
+    studio.db.execute("UPDATE threads SET created_at=?", (time.time() - 40 * day,))
+    studio.db.execute("UPDATE jobs SET created_at=?, status='done', finished_at=?", (time.time() - 40 * day, time.time() - 40 * day))
+    studio.db.execute("UPDATE jobs SET created_at=?, finished_at=?, outputs=? WHERE id=?",
+                      (time.time() - day, time.time() - day, json.dumps([out.name]), j_used["id"]))
+    studio.db.execute("UPDATE jobs SET status='queued', finished_at=NULL WHERE id=?", (j_wait["id"],))
+    studio.db.commit()
+    studio.cleanup_once()
+    assert studio.get_thread(used["id"]) is not None and out.exists()
+    assert studio.get_thread(idle["id"]) is None
+    assert studio.get_thread(waiting["id"]) is not None  # bekleyen işi olan sohbet silinmez
+
+
+async def test_cleanup_keeps_expired_upload_still_used_by_a_job(db):
+    old = time.time() - 40 * 86400
+    uploads = studio.MEDIA_DIR / "uploads"
+    used, unused = uploads / "kullanilan.png", uploads / "sahipsiz.png"
+    for f in (used, unused):
+        f.write_bytes(b"png")
+        os.utime(f, (old, old))
+    thread = studio.create_thread("image", "referanslı")
+    studio.create_job(thread["id"], "image", "image", "a", {"seed": 1}, [f"uploads/{used.name}"])
+    studio.cleanup_once()
+    assert used.exists() and not unused.exists()
 
 
 async def test_deleted_thread_text_does_not_survive_in_database_file(db):

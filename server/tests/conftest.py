@@ -29,6 +29,7 @@ def data_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime, "DATA_DIR", tmp_path)
     monkeypatch.setattr(runtime, "DURATIONS_FILE", tmp_path / "startup_durations.json")
     monkeypatch.setattr(runtime, "OWNED_FILE", tmp_path / "owned_endpoints.json")
+    monkeypatch.setattr(runtime, "PENDING_FILE", tmp_path / "start_pending.json")
     return tmp_path
 
 

@@ -146,13 +146,35 @@ else
   command -v uv >/dev/null || die "uv was installed but is not on PATH; open a new terminal and re-run ./install.sh"
 fi
 
+# colab_version BIN: google-colab-cli version next to the given colab binary (empty if unknown). The
+# studio finds the CLI's Python the same way (server/config.py colab_python).
+colab_version() {
+  local py
+  py="$(dirname "$(readlink -f "$1")")/python"
+  [[ -x ${py} ]] || return 0
+  "${py}" -c 'import importlib.metadata as m; print(m.version("google-colab-cli"))' 2>/dev/null || true
+}
+
 say "2/6 Google Colab CLI"
-if command -v colab >/dev/null; then
-  note "found $(command -v colab)"
+# The studio reads this tool's text output, so another version can break it with a meaningless error:
+# an existing colab of a different version is replaced by the pinned one (also on --update).
+COLAB=$(command -v colab || true)
+have=
+[[ -n ${COLAB} ]] && have=$(colab_version "${COLAB}")
+if [[ -n ${COLAB} && ${have} == "${COLAB_CLI_VERSION}" ]]; then
+  note "found ${COLAB} (${have})"
 else
-  uv tool install --python 3.12 "google-colab-cli==${COLAB_CLI_VERSION}"
+  [[ -n ${COLAB} ]] && note "found ${COLAB} (version ${have:-unknown}), the studio needs ${COLAB_CLI_VERSION}: installing it"
+  uv tool install --force --python 3.12 "google-colab-cli==${COLAB_CLI_VERSION}"
+  COLAB=$(command -v colab || true)
+  if [[ -z ${COLAB} || $(colab_version "${COLAB}") != "${COLAB_CLI_VERSION}" ]]; then
+    # Another colab earlier on PATH: the studio is pointed at the pinned one through COLAB_BIN (step 5).
+    COLAB="$(uv tool dir --bin)/colab"
+    [[ $(colab_version "${COLAB}") == "${COLAB_CLI_VERSION}" ]] || die "could not install google-colab-cli ${COLAB_CLI_VERSION}"
+    COLAB_BIN_PIN=${COLAB}
+    note "another colab comes first on PATH; the studio will use ${COLAB} (COLAB_BIN in .env)"
+  fi
 fi
-COLAB=$(command -v colab) || die "colab CLI is not on PATH after installing it"
 
 say "3/6 Python environment (.venv)"
 uv venv -q --allow-existing --python 3.12 .venv
@@ -232,6 +254,10 @@ if [[ ${fresh} == 1 ]]; then
   trap - EXIT
   ENV_FILE=.env
   note "written to .env (edit it any time, then restart the studio)"
+fi
+if [[ -n ${COLAB_BIN_PIN:-} ]]; then
+  set_env COLAB_BIN "${COLAB_BIN_PIN}"
+  note "COLAB_BIN=${COLAB_BIN_PIN}"
 fi
 
 say "6/6 Google sign-in for the Colab CLI"

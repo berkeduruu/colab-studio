@@ -688,15 +688,27 @@ def cleanup_once():
     """Saklama süresi dolan sohbetleri, eski iş satırlarını, kredi örneklerini, eskimiş süre
     anahtarlarını ve sahipsiz medyayı siler."""
     cutoff = time.time() - RETENTION_DAYS * 86400
-    for t in db.execute("SELECT id FROM threads WHERE created_at < ?", (cutoff,)).fetchall():
+    # Süre sohbetin son kullanımından sayılır (son işinin açılışı ya da bitişi), açılışından değil:
+    # 31 gün önce açılıp dün kullanılan sohbet silinmemeli. Bekleyen işi olan sohbete dokunulmaz.
+    stale = db.execute(
+        "SELECT t.id FROM threads t WHERE MAX(t.created_at, COALESCE((SELECT MAX(MAX(j.created_at, "
+        "COALESCE(j.finished_at, 0))) FROM jobs j WHERE j.thread_id = t.id), 0)) < ? AND NOT EXISTS "
+        f"(SELECT 1 FROM jobs j WHERE j.thread_id = t.id AND j.status IN ({','.join('?' * len(PENDING))}))",
+        (cutoff, *PENDING),
+    ).fetchall()
+    for t in stale:
         delete_thread(t["id"])
     db.execute("DELETE FROM jobs WHERE thread_id IS NULL AND created_at < ?", (cutoff,))
     db.execute("DELETE FROM credit_samples WHERE ts < ?", (time.time() - 90 * 86400,))
     db.commit()
     prune_timings()
     sweep_orphans()
+    # Bir işin girdisi olan yükleme (kalan sohbette görünen referans görseli gibi) süresi dolsa da kalır.
+    used = set()
+    for row in db.execute("SELECT inputs FROM jobs"):
+        used.update(json.loads(row["inputs"]))
     for f in (MEDIA_DIR / "uploads").iterdir():
-        if f.stat().st_mtime < cutoff:
+        if f.stat().st_mtime < cutoff and f"uploads/{f.name}" not in used:
             f.unlink()
 
 

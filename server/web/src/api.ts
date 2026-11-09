@@ -136,6 +136,7 @@ export interface Model3DParams {
 }
 
 export type Mode = "image" | "video" | "model3d" | "music" | "speech" | "transcribe";
+export const MODE_LIST: readonly Mode[] = ["image", "video", "model3d", "music", "speech", "transcribe"];
 
 export type JobStatus = "queued" | "waiting_gpu" | "running" | "done" | "error";
 
