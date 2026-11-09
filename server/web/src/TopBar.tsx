@@ -40,7 +40,8 @@ export function TopBar({ rt, onStart, onStop, onToggleAuto, onToggleLog, onToggl
         </span>
       )}
       {rt && (running ? (
-        <button className="btn danger" onClick={onStop}><Power size={14} /> {t("Kapat")}</button>
+        // Kapanırken ikinci basış bir şey yapmaz (sunucu yok sayar): düğme beklemede görünür.
+        <button className="btn danger" onClick={onStop} disabled={rt.phase === "stopping"}><Power size={14} /> {t("Kapat")}</button>
       ) : (
         <button className="btn" onClick={onStart}><Power size={14} /> {t("{gpu} başlat", { gpu: rt.gpu })}</button>
       ))}

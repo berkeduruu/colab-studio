@@ -157,3 +157,41 @@ async def test_lost_ssh_master_restores_port_forward(watch, unused_tcp_port, mon
     assert any("-O forward" in c for c in watch["calls"])
     assert f"http://127.0.0.1:{unused_tcp_port}" != runtime.COMFY_URL
     assert not watch["stops"] and runtime.state["phase"] == "ready"
+
+
+async def test_manual_stop_during_crash_check_is_not_reported_as_crash(watch, monkeypatch):
+    """Elle kapatma ssh bağlantısını keser; izleme turu o sırada ComfyUI'yi yokluyorsa ulaşamaz.
+    Kapanış zaten sürdüğü için ikinci bir kapanış ve yanıltıcı "ulaşılamıyor" hatası olmamalı."""
+    real_run = runtime.run
+
+    async def run_while_user_stops(*cmd, **kw):
+        if "pgrep" in " ".join(cmd):
+            runtime.set_phase("stopping", "elle kapatıldı")  # pgrep beklenirken kullanıcı kapattı
+            raise RuntimeError("komut başarısız (255)")
+        return await real_run(*cmd, **kw)
+
+    monkeypatch.setattr(runtime, "run", run_while_user_stops)
+    watch["comfy"]["http"] = False
+    await asyncio.sleep(0.8)
+    assert not watch["stops"]
+    assert runtime.state["phase"] == "stopping" and runtime.state["detail"] == "elle kapatıldı"
+
+
+async def test_manual_stop_during_queue_read_does_not_start_second_shutdown(watch, aiohttp_server, monkeypatch):
+    armed = {"on": False}
+
+    async def queue_while_user_stops(request):
+        if armed["on"]:
+            runtime.set_phase("stopping", "elle kapatıldı")  # kuyruk yanıtı beklenirken kullanıcı kapattı
+        return web.json_response({"queue_running": [], "queue_pending": []})
+
+    app = web.Application()
+    app.add_routes([web.get("/queue", queue_while_user_stops)])
+    server = await aiohttp_server(app)
+    monkeypatch.setattr(runtime, "COMFY_URL", str(server.make_url("")).rstrip("/"))
+    await asyncio.sleep(0.2)  # eski sunucuya giden tur bitsin
+    armed["on"] = True
+    runtime.state["last_busy"] = time.time() - runtime.IDLE_MINUTES * 60 - 1
+    await asyncio.sleep(0.3)
+    assert not watch["stops"]
+    assert runtime.state["phase"] == "stopping" and runtime.state["detail"] == "elle kapatıldı"

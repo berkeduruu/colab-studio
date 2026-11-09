@@ -95,8 +95,19 @@ STEPS = [
     ("comfy", "ComfyUI başlatılıyor", 40),
 ]
 
+# GPU durum makinesi: hangi fazdan hangi fazlara geçilebilir. set_phase izinsiz bir geçişi kayda
+# düşer (ama uygular: GPU her durumda kapatılabilmeli); tests/test_phase_transitions.py aynı tabloyu
+# kullanır, yeni bir geçiş bu tabloya bilinçli eklenir.
+PHASE_TRANSITIONS = {
+    "off": {"starting", "stopping", "error"},  # error: servis açılışında eksik kurulum ya da bırakılamayan runtime
+    "starting": {"ready", "stopping", "error"},  # error: kurulum eksik; stopping: açılış hatası ya da kapatma
+    "ready": {"stopping"},
+    "stopping": {"off", "error", "stopping"},  # stopping→stopping: begin_stop, run_stop içinde bir kez daha çağrılır
+    "error": {"starting", "stopping", "error"},  # yeni açılış, yeniden kapatma ya da kurulum hâlâ eksik
+}
+
 state = {
-    "phase": "off",  # off | starting | ready | stopping | error
+    "phase": "off",  # PHASE_TRANSITIONS'taki fazlardan biri
     "detail": "",
     "auto_shutdown": True,
     "last_busy": None,
@@ -144,6 +155,8 @@ def short_error(e, limit=700):
 
 
 def set_phase(phase, detail=""):
+    if phase not in PHASE_TRANSITIONS.get(state["phase"], ()):
+        log(f"beklenmeyen faz geçişi: {state['phase']} → {phase}")
     state["phase"] = phase
     state["detail"] = detail
     if phase == "ready":
@@ -219,10 +232,6 @@ async def run(*cmd, timeout, shell=False, quiet=False, stdin_data=None):
 
 
 async def _start():
-    problem = preflight()
-    if problem:
-        set_phase("error", problem)
-        return
     try:
         _begin_step(0)
         await run(COLAB, "new", "--gpu", GPU, "-s", SESSION, timeout=600)
@@ -295,6 +304,12 @@ def start(pack="image"):
     indirilecek paketi yok (yazıya dökme; Whisper'ı eklenti kendisi indirir), hiçbir paket beklenmez."""
     global _start_task
     if state["phase"] in ("off", "error"):
+        # Kurulum eksikse (colab CLI ya da Google girişi yok) hata hemen döner: başlatan istek (arayüz,
+        # MCP) "açılıyor" yerine ne yapılacağını görür.
+        problem = preflight()
+        if problem:
+            set_phase("error", problem)
+            return
         set_phase("starting", STEPS[0][1])
         now = time.time()
         state["startup"] = {"step": 0, "started_at": now, "step_started_at": now, "pack": pack if pack in PACKS or pack is None else "image"}
@@ -628,6 +643,9 @@ async def _watch_once(http, has_pending_jobs, on_credits):
     try:
         async with http.get(f"{COMFY_URL}/queue") as r:
             q = await r.json()
+        # Yanıt beklenirken GPU elle kapatılmış olabilir: eski gözleme göre ikinci bir kapanış başlamasın.
+        if state["phase"] != "ready":
+            return
         if (q["queue_running"] and not warming) or q["queue_pending"] or has_pending_jobs():
             state["last_busy"] = time.time()
         elif state["auto_shutdown"] and time.time() - state["last_busy"] >= IDLE_MINUTES * 60:
@@ -644,6 +662,10 @@ async def _watch_once(http, has_pending_jobs, on_credits):
                 log("ComfyUI portu kapalı (SSH bağlantısı yenilenmiş), yönlendirme yeniden kuruluyor")
                 await forward_comfy()
         except RuntimeError:
+            # Kapanış zaten sürüyorsa (elle kapatma ssh bağlantısını kesti) ComfyUI'ye ulaşılamaması
+            # beklenir: ikinci bir kapanış ya da yanıltıcı "ulaşılamıyor" hatası olmasın.
+            if state["phase"] != "ready":
+                return
             set_phase("stopping", "ComfyUI'ye ulaşılamıyor, kapatılıyor")
             await log_crash_context()
             try:

@@ -216,7 +216,7 @@ export class MockApi {
       if (cancel && method === "POST") {
         const j = this.jobs[cancel[1]];
         if (!j) return notFound();
-        Object.assign(j, { status: "error", error: "İptal edildi", finished_at: 1_790_000_999 });
+        Object.assign(j, { status: "error", error: "İptal edildi", cancelled: true, finished_at: 1_790_000_999 });
         this.rt = { ...this.rt, queue: { order: this.rt.queue.order.filter((id) => id !== j.id), current: null } };
         return json(j);
       }

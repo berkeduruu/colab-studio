@@ -88,6 +88,10 @@ Kullanıcı servisi, hesabında *lingering* açık değilse oturumu kapattığı
 `sudo loginctl enable-linger $USER` çalıştırırsın (sunucuda önemli: SSH oturumunu kapatınca stüdyo
 otomatik durmasın).
 
+`--service` için **systemd kullanıcı oturumu** gerekir (normal bir Linux girişi; kısıtlı container ya
+da WSL1 değil). Olmayan bir makinede kurulum betiği bunu söyler, gerisini yine kurar; stüdyoyu
+`./run.sh` ile başlatırsın.
+
 ### Docker
 
 ```bash
@@ -95,7 +99,7 @@ docker compose run --rm studio colab usage          # tek seferlik Google giriş
 docker compose up -d                                # http://127.0.0.1:8190/ (ya da STUDIO_PORT'un)
 ```
 
-İlk komut imajı build eder (birkaç dakika, yaklaşık 650 MB; build'den önceki `pull access denied`
+İlk komut imajı build eder (birkaç dakika, yaklaşık 450 MB; build'den önceki `pull access denied`
 satırı normaldir); sonraki açılışlar hazır imajı kullanır. Sohbetler ve
 medya `studio-data`, giriş bilgisi `colab-login` volume'unda durur.
 
@@ -246,8 +250,9 @@ söyler ve yeniden başlatmayı sana bırakır). `./run.sh` ile açtıysan kendi
 `git pull && docker compose up -d --build`.
 
 Node.js yoksa `install.sh`, `VERSION`'daki sürümün hazır arayüzünü indirir. Çektiğin kodda o sürümden
-yeni arayüz değişiklikleri varsa bunu söyler (bunun için git geçmişi gerekir: `--depth 1` klon ya da
-ZIP indirmede anlayamaz ve bunu söyler); uyumlu arayüzü derlemek için Node.js 20.19+ ya da 22.12+ kur.
+yeni arayüz değişiklikleri varsa bunu söyler; bunun için klonda sürüm etiketi gerekir, yani ZIP
+indirmede (ya da etiketi olmayan bir klonda, örn. sürümden yeni bir commit'in `--depth 1` klonu)
+anlayamaz ve bunu söyler. Uyumlu arayüzü derlemek için Node.js 20.19+ ya da 22.12+ kur.
 
 ## Kaldırma
 
@@ -271,6 +276,8 @@ uv ve Colab CLI (`uv tool uninstall google-colab-cli`) olduğu gibi kalır. Dock
 | İndirme yavaş ya da 429 hatası | `.env`'e `HF_TOKEN` yaz ve yeniden başlat. |
 | `models.toml`'u değiştirdikten sonra iş hata veriyor | Yeni dosya büyük olasılıkla farklı bir mimaride; bkz. [Modeller](docs/models.tr.md). |
 | "port ... is already in use" | Portu başka bir Colab Studio (ya da başka bir program) kullanıyor. Onu durdur ya da başka bir `STUDIO_PORT` seç. Docker: değiştir, sonra `docker compose up -d --force-recreate`. |
+| `--service` "systemd yok" diyor | Bu makinede systemd kullanıcı oturumu yok (kısıtlı container, WSL1). Stüdyoyu `./run.sh` ile başlat ya da `./install.sh --service` komutunu makinede normal bir girişte çalıştır. |
+| Bir makinede iki stüdyo | Her `.env`'e ayrı `STUDIO_PORT` **ve** ayrı `STUDIO_DATA` ver; yoksa ikincisi "port ... is already in use" ile durur ve ikisi tek sohbet/medya klasörünü paylaşır. |
 | Diğer her şey | Sağ üstteki kayıtlar düğmesi GPU açılış kaydını gösterir. Stüdyonun kendi çıktısı `./run.sh`'ın çalıştığı terminaldedir; `--service` ile: `journalctl --user -u colab-studio`; Docker: `docker compose logs`. |
 
 Stüdyo yalnızca kendi açtığı Colab oturumunu (`STUDIO_SESSION`) kapatır. GPU açıkken stüdyo
@@ -283,11 +290,14 @@ sağlar: GPU'yu başlatma, üretim, işleri bekleme ve sonuçlara bakma. Node.js
 
 ```bash
 ./install.sh --mcp          # gerekirse stüdyoyu kurar, MCP sunucusunu derler, aşağıdaki komutu yazdırır
-claude mcp add colab-studio -- node "$PWD/mcp/dist/index.js"
+claude mcp add -s user colab-studio -- "$(command -v node)" "$PWD/mcp/dist/index.js"
 ```
 
 İki `install.sh` var: deponun kökündeki **stüdyoyu** kurar; `mcp/` içindeki yalnızca **MCP sunucusunu**
 derler (`--mcp` onu senin için çalıştırır). Uzak (SSH) kurulum ve araç listesi için [mcp/README.md](mcp/README.md).
+
+[Docker](#docker) kullanıyorsan `mcp/install.sh` ile derle (`./install.sh --mcp` stüdyonun kendisini kurar)
+ve aynı komutla ekle: MCP sunucusu medya dahil her şeyi stüdyonun API'sinden okur (`.env`'deki `STUDIO_PORT`).
 
 ## Gizlilik ve güvenlik
 

@@ -194,13 +194,18 @@ async def test_model3d_job_saves_glb_and_progress_never_goes_back(comfy, monkeyp
     """3D grafiğinde dört örnekleyici var: ilerleme çubuğu her birinde başa dönmez, aşama
     metni hangi örnekleyicinin çalıştığını söyler."""
     seen = []
-    update = studio._update
+    update, set_status = studio._update, studio._set_status
 
     def record(jid, **fields):
         seen.append(fields)
         update(jid, **fields)
 
+    def record_status(jid, status, **fields):
+        seen.append(fields)
+        return set_status(jid, status, **fields)
+
     monkeypatch.setattr(studio, "_update", record)
+    monkeypatch.setattr(studio, "_set_status", record_status)
     ref = upload(".png")
     params = {"resolution": 1024, "texture": "vertex", "faces": 50000, "seed": None}
     job = studio.create_job("t", "model3d", "model3d", "3D model", params, [ref])
@@ -639,3 +644,44 @@ async def test_warmup_gives_up_after_deadline(comfy, monkeypatch):
     monkeypatch.setattr(runtime, "pack_state", pending)
     await asyncio.wait_for(runtime.warmup(), 5)
     assert "image" not in runtime.warm
+
+
+async def test_cancel_as_gpu_becomes_ready_never_revives_the_job(db, monkeypatch):
+    """GPU hazır olduğu anda gelen iptal bekleme döngüsünde görülmez: iş yine de "running"e dönmez,
+    çalıştırılmaz ve iptal kaydı (hata, bitiş zamanı) korunur. Son durumlar geri açılamaz."""
+    runs = []
+
+    async def fake_run(job):
+        runs.append(job["id"])
+
+    monkeypatch.setattr(runtime, "start", lambda pack=None: runtime.set_phase("starting", "GPU ayrılıyor"))
+    monkeypatch.setattr(studio, "_run", fake_run)
+    runtime.local_modes.update(runtime.PACKS)
+    task = asyncio.create_task(studio.worker())
+    try:
+        job = studio.create_job("t", "image", "image", "x", {**IMAGE, "count": 1}, [])
+        for _ in range(100):
+            if studio.get_job(job["id"])["status"] == "waiting_gpu":
+                break
+            await asyncio.sleep(0.05)
+        await studio.cancel_job(job["id"])
+        runtime.set_phase("ready", "GPU hazır")  # worker uyurken: döngü iptali görmeden çıkar
+        cancelled = studio.get_job(job["id"])
+        await asyncio.sleep(2.5)  # worker 2 sn'de bir yoklar
+        after = studio.get_job(job["id"])
+    finally:
+        task.cancel()
+        runtime.set_phase("off")
+    assert runs == []
+    assert after["status"] == "error" and after["cancelled"] and after["finished_at"] == cancelled["finished_at"]
+
+
+async def test_terminal_job_status_cannot_be_reopened(db):
+    job = studio.create_job("t", "image", "image", "x", {**IMAGE, "count": 1}, [])
+    assert studio._set_status(job["id"], "running")
+    assert studio._set_status(job["id"], "done", progress=1.0)
+    for status in ("queued", "waiting_gpu", "running", "error"):
+        assert not studio._set_status(job["id"], status, error="geç gelen yazım")
+    done = studio.get_job(job["id"])
+    assert done["status"] == "done" and done["error"] is None and not done["cancelled"]
+    assert set(studio.JOB_TRANSITIONS) == {"queued", "waiting_gpu", "running", "done", "error"}

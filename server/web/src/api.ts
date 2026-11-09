@@ -139,11 +139,12 @@ export type Mode = "image" | "video" | "model3d" | "music" | "speech" | "transcr
 
 export type JobStatus = "queued" | "waiting_gpu" | "running" | "done" | "error";
 
-// Job-status decisions live in one place: adding a status only changes this block. A cancelled job
-// currently arrives as "error" (the server has no separate status).
+// Job-status decisions live in one place: adding a status only changes this block. done and error
+// are final (server/studio.py:JOB_TRANSITIONS). A cancelled job arrives as "error" with cancelled=true.
 export const isPending = (j: { status: JobStatus }) => j.status !== "done" && j.status !== "error";
 export const isDone = (j: { status: JobStatus }) => j.status === "done";
-export const isFailed = (j: { status: JobStatus }) => j.status === "error";
+export const isFailed = (j: { status: JobStatus; cancelled?: boolean }) => j.status === "error" && !j.cancelled;
+export const isCancelled = (j: { status: JobStatus; cancelled?: boolean }) => j.status === "error" && !!j.cancelled;
 
 export interface Job {
   id: string;
@@ -153,6 +154,8 @@ export interface Job {
   params: Partial<ImageParams> & Partial<VideoParams> & Partial<MusicParams> & Partial<SpeechParams> & Partial<Model3DParams> & { width?: number; height?: number };
   inputs: string[];
   status: JobStatus;
+  /** status=error and the job was cancelled (by the user or a manual GPU stop), not a failure. */
+  cancelled?: boolean;
   progress: number;
   error: string | null;
   stage: string | null;

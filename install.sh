@@ -250,6 +250,14 @@ port=$(grep -E '^STUDIO_PORT=' .env | cut -d= -f2 || true)
 host=$(grep -E '^STUDIO_HOST=' .env | cut -d= -f2 || true)
 if [[ ${SERVICE} == 1 ]]; then
   say "systemd user service"
+  if ! systemctl --user show-environment >/dev/null 2>&1; then
+    # Kısıtlı container / WSL1 / systemd'siz makine: ham "Failed to connect to bus" hatasıyla kesmek
+    # yerine söyle ve devam et; kurulumun gerisi tamamdır, stüdyo ./run.sh ile çalışır.
+    note "no systemd user session on this machine (systemctl --user cannot reach a bus):"
+    note "  --service needs one. Everything else is installed; start the studio with ./run.sh, or run"
+    note "  ./install.sh --service again in a normal login session (a real host, not a container)."
+    SERVICE=0
+  else
   session=$(grep -E '^STUDIO_SESSION=' .env | cut -d= -f2 || true)
   mkdir -p ~/.config/systemd/user
   sed -e "s|@REPO@|${REPO}|g" -e "s|@PATH@|${PATH}|g" -e "s|@COLAB@|${COLAB}|g" -e "s|@SESSION@|${session:-studio}|g" \
@@ -261,6 +269,7 @@ if [[ ${SERVICE} == 1 ]]; then
   me=${USER:-$(id -un)}  # USER docker exec / cron / su altında tanımsız olabilir
   loginctl enable-linger "${me}" 2>/dev/null || note "run 'sudo loginctl enable-linger ${me}' so the studio keeps running after you log out"
   note "running: systemctl --user status colab-studio · logs: journalctl --user -u colab-studio -f"
+  fi
 fi
 
 if [[ ${MCP} == 1 ]]; then

@@ -1,7 +1,7 @@
 """GPU durum makinesi (runtime.state["phase"]) yalnızca izinli geçişlerle ilerler.
 
-Üretim kodu değişmez: set_phase çağrıları kaydedilir ve geçiş tablosuyla karşılaştırılır. Yeni bir
-geçiş eklenirse (ya da yanlış yerden set_phase çağrılırsa) bu test tabloyu bilinçli güncellemeye zorlar.
+set_phase çağrıları kaydedilir ve runtime.PHASE_TRANSITIONS ile karşılaştırılır. Yeni bir geçiş eklenirse
+(ya da yanlış yerden set_phase çağrılırsa) bu test tabloyu bilinçli güncellemeye zorlar.
 """
 import asyncio
 import json
@@ -10,14 +10,8 @@ import pytest
 
 import runtime
 
-# Geçiş tablosu: şu fazdan hangi fazlara geçilebilir.
-ALLOWED = {
-    "off": {"starting", "stopping", "error"},  # error: servis açılışında eksik kurulum ya da artık runtime
-    "starting": {"ready", "stopping", "error"},  # error: kurulum eksik; stopping: açılış hatası ya da kapatma
-    "ready": {"stopping"},
-    "stopping": {"off", "error", "stopping"},  # stopping→stopping: begin_stop, run_stop içinde bir kez daha çağrılır
-    "error": {"starting", "stopping"},  # yeni açılış ya da yeniden kapatma denemesi
-}
+# Geçiş tablosu üretim kodunda: tek kaynak.
+ALLOWED = runtime.PHASE_TRANSITIONS
 
 
 @pytest.fixture
@@ -157,9 +151,9 @@ async def test_cancelling_a_start_goes_through_stopping(transitions, fake_runtim
 
 async def test_missing_setup_ends_in_error_without_touching_colab(transitions, fake_runtime, monkeypatch):
     monkeypatch.setattr(runtime, "preflight", lambda: "colab CLI bulunamadı")
-    runtime.start("none")
-    await finish_start()
+    runtime.start("none")  # açılış görevi hiç başlamaz: hata isteğin yanıtında görünür
     assert runtime.state["phase"] == "error" and "colab CLI" in runtime.state["detail"]
-    assert [b for _, b in transitions] == ["starting", "error"]
+    runtime.start("none")  # kurulum hâlâ eksikken yeniden deneme
+    assert [b for _, b in transitions] == ["error", "error"]
     assert fake_runtime["stops"] == 0
     assert_allowed(transitions)

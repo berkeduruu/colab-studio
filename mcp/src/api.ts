@@ -36,9 +36,6 @@ const ENV: Record<string, string | undefined> = { ...studioEnv(), ...process.env
 
 /** Stüdyo API'si (server/app.py). */
 export const API_BASE = (ENV.STUDIO_URL || `http://127.0.0.1:${ENV.STUDIO_PORT || "8190"}`).replace(/\/+$/, "");
-/** Stüdyonun veri dizini (.env'deki STUDIO_DATA); medya `media/` altında. */
-export const DATA_DIR = (ENV.STUDIO_DATA || "~/.local/share/colab-studio").replace(/^~(?=\/|$)/, os.homedir());
-export const MEDIA_DIR = path.join(DATA_DIR, "media");
 /** Medya dosyalarının istemciye verilen taban adresi (stüdyo `/media` yolundan sunar). */
 export const PUBLIC_MEDIA_URL_BASE = (ENV.STUDIO_PUBLIC_MEDIA_URL || `${API_BASE}/media`).replace(/\/+$/, "");
 /** colab CLI (PATH'te değilse COLAB_BIN ile verilir). */
@@ -46,9 +43,10 @@ const COLAB_BIN = ENV.COLAB_BIN || "colab";
 
 /** `server/studio.py:JOB_TIMEOUT` — bir işin 30 dakikada bitmesi beklenir. */
 export const JOB_TIMEOUT_SECONDS = 1800;
-/** `server/studio.py:CANCELLED` — iptal edilen iş `status=error, error="İptal edildi"` olarak kapanır. */
+/** `server/studio.py:CANCELLED` — iptal edilen iş `status=error, cancelled=true` olarak kapanır; bu metin
+ * yalnızca `cancelled` alanını göndermeyen eski stüdyolar için yedek. */
 export const CANCELLED_JOB_ERROR = "İptal edildi";
-/** Terminal durumlar: backend bunların dışına asla yazmaz (`queued|waiting_gpu|running` sürer). */
+/** Terminal durumlar (`server/studio.py:JOB_TRANSITIONS`): backend bir işi bunlardan geri açmaz. */
 export const TERMINAL_JOB_STATUSES = ["done", "error"] as const;
 /** Stüdyonun modları (`server/app.py:MODES`). */
 export const STUDIO_MODES = ["image", "video", "music", "speech", "transcribe", "model3d"] as const;
@@ -150,7 +148,8 @@ export interface CreditStats {
 }
 
 export interface RuntimeStatus {
-  phase: "off" | "starting" | "setup" | "ready" | "error" | string;
+  /** `server/runtime.py:PHASE_TRANSITIONS`. */
+  phase: "off" | "starting" | "ready" | "stopping" | "error";
   detail: string | null;
   auto_shutdown: boolean;
   idle_seconds: number | null;
@@ -189,6 +188,8 @@ export interface JobRecord {
   params: Record<string, unknown>;
   inputs: string[];
   status: JobStatus;
+  /** status=error ve iş iptal edildi (kullanıcı ya da elle GPU kapatma); hata değil. */
+  cancelled?: boolean;
   stage?: string | null;
   live?: JobLiveState | null;
   progress: number;
@@ -267,8 +268,9 @@ export function isTerminalStatus(status: string): boolean {
   return (TERMINAL_JOB_STATUSES as readonly string[]).includes(status);
 }
 
-/** İptal, terminal `error` durumunun içinden yalnızca bu metinle ayrılır. */
-export function isCancelledJob(job: Pick<JobRecord, "error"> | null | undefined): boolean {
+/** İptal edilen iş terminal `error` durumundadır; stüdyo bunu `cancelled` alanıyla bildirir. */
+export function isCancelledJob(job: Pick<JobRecord, "error" | "cancelled"> | null | undefined): boolean {
+  if (typeof job?.cancelled === "boolean") return job.cancelled;
   return typeof job?.error === "string" && job.error.trim() === CANCELLED_JOB_ERROR;
 }
 
@@ -307,13 +309,30 @@ export function delay(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+/** Stüdyoya istek: ağ hatası (stüdyo kapalı, yanlış port) ajana çıplak "fetch failed" yerine stüdyonun
+ * beklendiği adresi ve nasıl başlatılacağını söyler. Zaman aşımı ve iptal olduğu gibi geçer. */
+async function studioFetch(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error: unknown) {
+    const name = (error as { name?: string })?.name;
+    if (name === "AbortError" || name === "TimeoutError") throw error;
+    throw new Error(
+      `Colab Studio is not reachable at ${API_BASE} (${error instanceof Error ? error.message : String(error)}). ` +
+        "Is it running? Start it with 'systemctl --user start colab-studio', './run.sh' or 'docker compose up -d'; " +
+        "set STUDIO_URL if it listens on another address.",
+      { cause: error }
+    );
+  }
+}
+
 export async function fetchJson<T>(apiPath: string, init?: RequestInit): Promise<T> {
   const url = `${API_BASE}${apiPath.startsWith("/") ? "" : "/"}${apiPath}`;
   const headers: Record<string, string> = { Accept: "application/json" };
   if (init?.body !== undefined && init.body !== null) {
     headers["Content-Type"] = "application/json";
   }
-  const response = await fetch(url, {
+  const response = await studioFetch(url, {
     ...init,
     headers: {
       ...headers,
@@ -455,75 +474,26 @@ export async function waitForJob(
   }
 }
 
-async function collectMediaFiles(
-  dir: string,
-  relativePrefix: string,
-  isOutput: boolean,
-  extensionFilter: string | undefined,
-  out: Array<MediaFileInfo & { mtimeMs: number }>
-): Promise<void> {
-  let entries;
-  try {
-    entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch (error: unknown) {
-    const code = (error as { code?: string }).code;
-    if (code === "ENOENT" && relativePrefix) {
-      return; // uploads dizini henüz oluşmamış olabilir
-    }
-    throw error;
-  }
-
-  const wanted = extensionFilter?.toLowerCase().replace(".", "");
-
-  for (const entry of entries) {
-    if (!entry.isFile()) {
-      continue;
-    }
-    const ext = path.extname(entry.name).toLowerCase().replace(".", "");
-    if (wanted && ext !== wanted) {
-      continue;
-    }
-    const relativeName = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
-    try {
-      const stats = await fs.stat(path.join(dir, entry.name));
-      out.push({
-        filename: relativeName,
-        sizeBytes: stats.size,
-        mtimeMs: stats.mtimeMs,
-        modifiedAt: stats.mtime.toISOString(),
-        publicUrl: mediaPublicUrl(relativeName),
-        isOutput,
-      });
-    } catch {
-      // kaldırılmış/geçici dosya: atla
-    }
-  }
-}
-
 /**
- * Medya dizinini listeler: kökteki üretim çıktıları ve `uploads/` alt dizinindeki yüklemeler.
- * `isOutput` dizin bilgisinden gelir, dosya adından tahmin edilmez.
+ * Medya kitaplığı (`GET /api/media`): kökteki üretim çıktıları ve `uploads/` altındaki yüklemeler, en yeni
+ * önce. Stüdyonun diskine bakılmaz: stüdyo Docker'da ya da başka bir makinede olabilir.
  */
-export async function listMediaFiles(
-  limit: number = 30,
-  extensionFilter?: string
-): Promise<MediaFileInfo[]> {
-  try {
-    const files: Array<MediaFileInfo & { mtimeMs: number }> = [];
-    await collectMediaFiles(MEDIA_DIR, "", true, extensionFilter, files);
-    await collectMediaFiles(path.join(MEDIA_DIR, "uploads"), "uploads", false, extensionFilter, files);
-
-    files.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    return files.slice(0, limit).map(({ mtimeMs: _ignored, ...rest }) => rest);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to list media files: ${message}`);
-  }
+export async function listMediaFiles(limit: number = 30, extensionFilter?: string): Promise<MediaFileInfo[]> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (extensionFilter) query.set("ext", extensionFilter);
+  const { files } = await fetchJson<{ files: Array<{ name: string; size: number; mtime: number; is_output: boolean }> }>(`/api/media?${query}`);
+  return files.map((f) => ({
+    filename: f.name,
+    sizeBytes: f.size,
+    modifiedAt: new Date(f.mtime * 1000).toISOString(),
+    publicUrl: mediaPublicUrl(f.name),
+    isOutput: f.is_output,
+  }));
 }
 
 /**
  * Dosyayı API üzerinden yükler (`POST /api/uploads`, multipart alanı `file`).
- * Böylece içerik tipi ve 50 MB sınırı backend tarafından doğrulanır; `MEDIA_DIR`'e doğrudan yazılmaz.
+ * Böylece içerik tipi ve 50 MB sınırı backend tarafından doğrulanır; stüdyonun diskine doğrudan yazılmaz.
  */
 export async function uploadMedia(
   buffer: Buffer,
@@ -548,7 +518,7 @@ export async function uploadMedia(
   const form = new FormData();
   form.append("file", new Blob([new Uint8Array(buffer)], { type: mimeType }), path.basename(filename) || `upload${extension}`);
 
-  const response = await fetch(`${API_BASE}/api/uploads`, {
+  const response = await studioFetch(`${API_BASE}/api/uploads`, {
     method: "POST",
     body: form,
   });
@@ -575,32 +545,51 @@ export async function uploadMedia(
   };
 }
 
+/** Medya adını doğrular (`abc_0.png`, `uploads/x.jpg`); dizin dışına çıkan ya da mutlak yol reddedilir. */
+function mediaName(filenameOrRelative: string): string {
+  const name = path.posix.normalize(filenameOrRelative.replace(/\\/g, "/")).replace(/^\.\/+/, "");
+  if (!name || name === "." || name.startsWith("/") || name.split("/").includes("..")) {
+    throw new Error(`Path escapes the media directory: ${filenameOrRelative}`);
+  }
+  return name;
+}
+
+/** Medya dosyasını stüdyonun `/media` adresinden okur (stüdyo nerede çalışırsa çalışsın aynı yol). */
+async function fetchMedia(filenameOrRelative: string, maxBytes: number): Promise<{ name: string; data: Buffer }> {
+  const name = mediaName(filenameOrRelative);
+  const response = await studioFetch(`${API_BASE}/media/${name.split("/").map(encodeURIComponent).join("/")}`, {
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (response.status === 404) {
+    await response.body?.cancel();
+    throw new Error(`Media file not found: ${name} (list_media shows the available files)`);
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new ApiError(`Colab Studio media error (${response.status} ${response.statusText}) for ${name}`, response.status);
+  }
+  const declared = Number(response.headers.get("content-length") || 0);
+  if (declared > maxBytes) {
+    await response.body?.cancel();
+    throw new Error(`File size (${Math.round(declared / 1024)} KB) exceeds maximum allowed size of ${Math.round(maxBytes / 1024)} KB`);
+  }
+  const data = Buffer.from(await response.arrayBuffer());
+  if (data.length > maxBytes) {
+    throw new Error(`File size (${Math.round(data.length / 1024)} KB) exceeds maximum allowed size of ${Math.round(maxBytes / 1024)} KB`);
+  }
+  return { name, data };
+}
+
 export async function readMediaBase64(
   filenameOrRelative: string,
   maxSizeKb: number = 4096
 ): Promise<{ mimeType: string; base64: string; sizeBytes: number; filename: string }> {
-  const normalized = path.normalize(filenameOrRelative).replace(/^(\.\.(\/|\\|$))+/, "");
-  const fullPath = path.join(MEDIA_DIR, normalized);
-  const resolved = path.resolve(fullPath);
-  const root = path.resolve(MEDIA_DIR);
-  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
-    throw new Error(`Path escapes the media directory: ${filenameOrRelative}`);
-  }
-
-  const stats = await fs.stat(resolved);
-  if (stats.size > maxSizeKb * 1024) {
-    throw new Error(`File size (${Math.round(stats.size / 1024)} KB) exceeds maximum allowed size of ${maxSizeKb} KB`);
-  }
-
-  const ext = path.extname(resolved).toLowerCase();
-  const mimeType = MEDIA_MIME_TYPES[ext] || "application/octet-stream";
-
-  const data = await fs.readFile(resolved);
+  const { name, data } = await fetchMedia(filenameOrRelative, maxSizeKb * 1024);
   return {
-    mimeType,
+    mimeType: MEDIA_MIME_TYPES[path.extname(name).toLowerCase()] || "application/octet-stream",
     base64: data.toString("base64"),
-    sizeBytes: stats.size,
-    filename: path.relative(root, resolved).split(path.sep).join("/"),
+    sizeBytes: data.length,
+    filename: name,
   };
 }
 
@@ -672,17 +661,6 @@ async function hasFfmpeg(): Promise<boolean> {
   return ffmpegAvailable;
 }
 
-/** Medya dizini içindeki tam yolu çözer; dizin dışına çıkan yol reddedilir. */
-function resolveMediaPath(filenameOrRelative: string): { resolved: string; relative: string } {
-  const normalized = path.normalize(filenameOrRelative).replace(/^(\.\.(\/|\\|$))+/, "");
-  const resolved = path.resolve(path.join(MEDIA_DIR, normalized));
-  const root = path.resolve(MEDIA_DIR);
-  if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
-    throw new Error(`Path escapes the media directory: ${filenameOrRelative}`);
-  }
-  return { resolved, relative: path.relative(root, resolved).split(path.sep).join("/") };
-}
-
 export const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".mkv"]);
 
 /**
@@ -690,19 +668,41 @@ export const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".mkv"]);
  * (ffmpeg). Claude görselleri zaten küçültür: tam PNG göndermek yalnızca aktarımı yavaşlatır.
  * ffmpeg yoksa ya da dönüştürme başarısızsa `null` döner; çağıran taraf özgün dosyaya düşer.
  */
+/** Kaynak dosya önizleme için en fazla bu kadar indirilir (uzun videolar dahil). */
+// ponytail: dosya bellekte tutulup geçici dosyaya yazılır; çok büyük videolar gerekirse akışla diske yazılır.
+const MAX_PREVIEW_SOURCE_BYTES = 512 * 1024 * 1024;
+
 export async function readMediaPreview(
   filenameOrRelative: string,
   maxDim: number
 ): Promise<{ base64: string; mimeType: string; sizeBytes: number; originalBytes: number; filename: string; kind: "image" | "video" } | null> {
-  const { resolved, relative } = resolveMediaPath(filenameOrRelative);
-  const stats = await fs.stat(resolved);
-  const ext = path.extname(resolved).toLowerCase();
+  const relative = mediaName(filenameOrRelative);
+  const ext = path.extname(relative).toLowerCase();
   const isImage = (MEDIA_MIME_TYPES[ext] || "").startsWith("image/");
   const isVideo = VIDEO_EXTENSIONS.has(ext);
   if ((!isImage && !isVideo) || !(await hasFfmpeg())) {
     return null;
   }
+  // ffmpeg/ffprobe dosyada çalışır (mp4'ün moov kutusu sonda olabilir, akıştan okunamaz): geçici kopya.
+  const { data } = await fetchMedia(relative, MAX_PREVIEW_SOURCE_BYTES);
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "colab-studio-mcp-"));
+  const resolved = path.join(tmp, `source${ext}`);
+  try {
+    await fs.writeFile(resolved, data);
+    return await renderPreview(resolved, isVideo, maxDim, data.length, relative);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+}
 
+
+async function renderPreview(
+  resolved: string,
+  isVideo: boolean,
+  maxDim: number,
+  originalBytes: number,
+  relative: string
+): Promise<{ base64: string; mimeType: string; sizeBytes: number; originalBytes: number; filename: string; kind: "image" | "video" } | null> {
   const fit = `scale='min(${maxDim},iw)':'min(${maxDim},ih)':force_original_aspect_ratio=decrease`;
   let filter = fit;
   if (isVideo) {
@@ -739,7 +739,7 @@ export async function readMediaPreview(
       base64: out.toString("base64"),
       mimeType: "image/jpeg",
       sizeBytes: out.length,
-      originalBytes: stats.size,
+      originalBytes,
       filename: relative,
       kind: isVideo ? "video" : "image",
     };
@@ -798,9 +798,12 @@ export async function updateSetting(key: string, value: unknown): Promise<{ ok: 
 
 export async function runColabSessions(): Promise<string> {
   try {
-    const { stdout, stderr } = await execAsync(`"${COLAB_BIN}" sessions 2>&1`);
+    const { stdout, stderr } = await execFileAsync(COLAB_BIN, ["sessions"]);
     return stdout || stderr || "No output returned.";
   } catch (error: unknown) {
+    if ((error as { code?: string }).code === "ENOENT") {
+      return `colab CLI (${COLAB_BIN}) is not on this machine. With Docker it lives in the container: docker compose exec studio colab sessions. colab_runtime_status shows the GPU state.`;
+    }
     if (error && typeof error === "object" && "message" in error) {
       const err = error as { message: string; stdout?: string; stderr?: string };
       return `Error executing colab sessions: ${err.message}\n${err.stdout || ""} ${err.stderr || ""}`;
@@ -822,11 +825,15 @@ export async function getSystemStatus(): Promise<SystemHealthSummary> {
     uptime = stdout.trim();
   } catch {}
 
+  // Disk, stüdyonun kendi veri dizini için stüdyodan okunur (Docker'da bu makinenin yolu değildir).
   let diskUsage = "";
   try {
-    const { stdout } = await execAsync(`df -h "${DATA_DIR}" | tail -n +2`);
-    diskUsage = stdout.trim();
-  } catch {}
+    const { disk } = await fetchJson<{ disk: { total: number; used: number; free: number } }>("/api/media?limit=1");
+    const gb = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GB`;
+    diskUsage = `studio data: ${gb(disk.used)} used of ${gb(disk.total)}, ${gb(disk.free)} free`;
+  } catch (error: unknown) {
+    diskUsage = `unavailable: ${error instanceof Error ? error.message : String(error)}`;
+  }
 
   let memoryUsage = "";
   try {
