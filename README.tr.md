@@ -32,6 +32,11 @@
   <img src="docs/screenshots/hero.png" width="900" alt="Colab Stüdyo web arayüzü: görsel modu ve ayarlar paneli">
 </p>
 
+<p align="center">
+  <a href="https://berkeduruu.github.io/colab-studio/tr/#demo"><img src="docs/assets/demo-readme.jpg" width="900" alt="39 saniyelik tanıtım videosunu oynat"></a><br>
+  <sub>▶ <a href="https://berkeduruu.github.io/colab-studio/tr/#demo">39 saniyelik tanıtımı izle</a> · <a href="docs/assets/demo.mp4">MP4, 5 MB</a></sub>
+</p>
+
 ## Kurulum
 
 Nerede çalıştıracağına göre yolu seç:
@@ -144,7 +149,10 @@ harcayabilir. Bu yüzden şunlardan birini seç:
 IP adresi ya da `localhost` ile açmak için başka bir şey gerekmez. **Yalnızca bir alan adıyla açarsan**
 (örneğin nginx arkasında) o ad `.env`'deki `STUDIO_ALLOWED_HOSTS`'ta yazılı olmalı; yoksa stüdyo 403
 döner. Bu, DNS rebinding saldırılarını engeller. `setup-nginx.sh` alan adını senin için ekler; kendi
-ters vekil sunucunu (reverse proxy) kullanıyorsan adı kendin ekleyip yeniden başlat.
+ters vekil sunucunu (reverse proxy) kullanıyorsan adı kendin ekleyip yeniden başlat. Vekil ayrıca `Host`
+başlığını değiştirmeden iletmeli (nginx: `proxy_set_header Host $host;`, bkz. `deploy/nginx.conf.template`)
+ya da `X-Forwarded-Host` göndermeli; yoksa kaydetme ve iş başlatma 403 "request from another site was
+rejected" ile düşer (tarayıcının `Origin`'i artık uymaz).
 
 `setup-nginx.sh` hakkında:
 
@@ -232,6 +240,7 @@ colab-studio` (servis), `docker compose up -d` (Docker; `restart` eski değerler
 | `STUDIO_ALLOWED_HOSTS` | boş | Arayüzün açılabileceği alan adları, virgülle ayrılmış (`a.ornek.com,b.ornek.com`). IP adresleri, `localhost` ve `*.localhost` her zaman çalışır; diğer adlar 403 alır (DNS rebinding koruması). `*` denetimi kapatır: yalnızca kendi vekil sunucunun arkasında. |
 | `HF_TOKEN` | boş | Hugging Face okuma token'ı; yalnızca erişimi kısıtlı (gated) repolar için gerekli, hız sınırına karşı önerilir. |
 | `STUDIO_IDLE_MINUTES` | `15` | GPU bu kadar dakika boşta kalınca kapatılır. Arayüzdeki anahtar bunu yalnızca bir sonraki yeniden başlatmaya kadar kapatıp açar. |
+| `STUDIO_RETENTION_DAYS` | `30` | Bu kadar gündür kullanılmayan sohbetler (medya ve yüklemeleriyle) kendiliğinden silinir. `0` hiçbir şeyi silmez. |
 | `STUDIO_DATA` | `~/.local/share/colab-studio` (Docker: `studio-data` volume'u) | Sohbetler, medya, öğrenilmiş süreler ve stüdyonun kendi SSH anahtarı. |
 | `STUDIO_MODELS` | varsa repo kökündeki `models.toml`, yoksa `station/models.default.toml` | Model kataloğu, bkz. [Modeller](docs/models.tr.md). |
 | `COLAB_BIN` | `PATH`'teki `colab`, yoksa `~/.local/bin/colab` | Colab CLI'ın yolu. |
@@ -274,6 +283,8 @@ uv ve Colab CLI (`uv tool uninstall google-colab-cli`) olduğu gibi kalır. Dock
 | 403 "the host name ... is not allowed" | Stüdyoyu bir alan adıyla açtın. Adı `.env`'deki `STUDIO_ALLOWED_HOSTS`'a ekle ve yeniden başlat (Docker: `docker compose up -d`). |
 | GPU açılışı "GPU ayrılıyor"da düşüyor | Boşta L4 yok ya da kredi bitti. `colab usage` ile bak, sonra tekrar dene. |
 | İndirme yavaş ya da 429 hatası | `.env`'e `HF_TOKEN` yaz ve yeniden başlat. |
+| Şarkı seçtiğin süreden kısa çıkıyor | Müzik süresi bir üst sınırdır ("en çok"): şarkı sözler bitince biter. Daha uzun şarkı için sözlere daha çok `[verse]` / `[chorus]` bölümü ekle. |
+| Şarkı seçtiğin süreden kısa çıkıyor | Müzik süresi bir üst sınırdır ("en çok"): şarkı sözler bitince biter. Daha uzun şarkı için sözlere daha çok `[verse]` / `[chorus]` bölümü ekle. |
 | `models.toml`'u değiştirdikten sonra iş hata veriyor | Yeni dosya büyük olasılıkla farklı bir mimaride; bkz. [Modeller](docs/models.tr.md). |
 | "port ... is already in use" | Portu başka bir Colab Studio (ya da başka bir program) kullanıyor. Onu durdur ya da başka bir `STUDIO_PORT` seç. Docker: değiştir, sonra `docker compose up -d --force-recreate`. |
 | `--service` "systemd yok" diyor | Bu makinede systemd kullanıcı oturumu yok (kısıtlı container, WSL1). Stüdyoyu `./run.sh` ile başlat ya da `./install.sh --service` komutunu makinede normal bir girişte çalıştır. |
@@ -303,8 +314,8 @@ ve aynı komutla ekle: MCP sunucusu medya dahil her şeyi stüdyonun API'sinden 
 
 - `.env` dosyan (Hugging Face token'ı) ve Colab girişin senin makinende kalır; token yalnızca model
   indirebilmesi için kendi Colab runtime'ına kopyalanır.
-- İstemler, yüklemeler ve sonuçlar senin makinende `STUDIO_DATA` altında durur. 30 günden eski
-  sohbetler kendiliğinden silinir.
+- İstemler, yüklemeler ve sonuçlar senin makinende `STUDIO_DATA` altında durur. 30 gündür
+  kullanılmayan sohbetler kendiliğinden silinir (`STUDIO_RETENTION_DAYS`; `0` hiçbir şeyi silmez).
 - ComfyUI ağa hiç açılmaz; stüdyo ona kendi SSH tüneliyle ulaşır.
 - Başka sitelerden gelen yazma istekleri (CSRF koruması) ve tanınmayan bir alan adıyla gelen her
   istek (DNS rebinding koruması, bkz. `STUDIO_ALLOWED_HOSTS`) reddedilir.
@@ -331,8 +342,10 @@ Chromium sistem kütüphaneleri eksik diye açılmazsa bir kez `npx playwright i
 | `mcp/` | MCP sunucusu (kendi `install.sh`'ı yalnızca bunu derler) |
 | `deploy/` | systemd servisi, nginx şablonları, `doctor.sh`, `uninstall.sh` |
 
-API'nin durum ve hata metinleri Türkçedir; web arayüzü bunları çevirir (`src/en.ts`), bu yüzden arayüz
-varsayılan olarak İngilizcedir. Yeni bir sunucu mesajı eklediğinde İngilizcesini oraya da ekle.
+Sunucunun durum ve hata metinleri Türkçe yazılır. Web arayüzü bunları kendisi çevirir (`src/en.ts`,
+`X-Studio-UI: 1` başlığı gönderir); diğer istemciler (MCP, `curl`, betikler) `Accept-Language: tr`
+göndermedikçe aynı İngilizce metinleri `server/i18n.py`'den alır (bu tabloyu okur). Yeni bir sunucu
+mesajı eklediğinde İngilizcesini `en.ts`'e de ekle (bir test denetler).
 
 ## Lisans
 

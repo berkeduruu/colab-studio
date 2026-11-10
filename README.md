@@ -32,6 +32,11 @@
   <img src="docs/screenshots/hero.png" width="900" alt="Colab Studio web UI: image mode with the settings panel open">
 </p>
 
+<p align="center">
+  <a href="https://berkeduruu.github.io/colab-studio/#demo"><img src="docs/assets/demo-readme.jpg" width="900" alt="Play the 39-second demo video"></a><br>
+  <sub>▶ <a href="https://berkeduruu.github.io/colab-studio/#demo">Watch the 39-second demo</a> (on-screen text in Turkish) · <a href="docs/assets/demo.mp4">MP4, 5 MB</a></sub>
+</p>
+
 ## Install
 
 Pick the way that fits where you run it:
@@ -143,7 +148,10 @@ your compute units, so pick one of these:
 Opening it by IP address or `localhost` needs nothing more. **Only if you open it by a domain name**
 (for example behind nginx) must that name be listed in `STUDIO_ALLOWED_HOSTS` in `.env`; otherwise
 the studio answers 403. This blocks DNS rebinding attacks. `setup-nginx.sh` adds its domain for you;
-with your own reverse proxy, add the name yourself and restart.
+with your own reverse proxy, add the name yourself and restart. The proxy must also pass the `Host`
+header through unchanged (nginx: `proxy_set_header Host $host;`, as in `deploy/nginx.conf.template`),
+or send `X-Forwarded-Host`; otherwise saving and starting jobs fail with 403 "request from another
+site was rejected" (the browser's `Origin` no longer matches).
 
 About `setup-nginx.sh`:
 
@@ -231,6 +239,7 @@ in your shell wins over `.env`. Restart after changes: `systemctl --user restart
 | `STUDIO_ALLOWED_HOSTS` | empty | Domain names the UI may be opened by, comma-separated (`a.example.com,b.example.com`). IP addresses, `localhost` and `*.localhost` always work; other names get 403 (DNS rebinding protection). `*` turns the check off: only behind your own proxy. |
 | `HF_TOKEN` | empty | Hugging Face read token; needed only for gated repos, recommended against rate limits. |
 | `STUDIO_IDLE_MINUTES` | `15` | Release the GPU after this many idle minutes. The switch in the UI only turns this off or on until the next restart. |
+| `STUDIO_RETENTION_DAYS` | `30` | Chats (with their media and uploads) not used for this many days are deleted automatically. `0` keeps everything. |
 | `STUDIO_DATA` | `~/.local/share/colab-studio` (Docker: the `studio-data` volume) | Chats, media, learned timings and the studio's own SSH key. |
 | `STUDIO_MODELS` | `models.toml` in the repository root if present, else `station/models.default.toml` | Model catalog, see [Models](docs/models.md). |
 | `COLAB_BIN` | `colab` on `PATH`, else `~/.local/bin/colab` | Path to the Colab CLI. |
@@ -273,6 +282,7 @@ uv and the Colab CLI (`uv tool uninstall google-colab-cli`) are left alone. Dock
 | 403 "the host name ... is not allowed" | You opened the studio by a domain name. Add it to `STUDIO_ALLOWED_HOSTS` in `.env` and restart (Docker: `docker compose up -d`). |
 | GPU start fails at "Allocating GPU" | No L4 available or no compute units left. Check `colab usage`, try again later. |
 | Downloads are slow or fail with 429 | Set `HF_TOKEN` in `.env` and restart. |
+| A song is shorter than the length you picked | The music length setting is an upper limit ("at most"): the song ends when its lyrics are done. Add more `[verse]` / `[chorus]` sections to the lyrics for a longer song. |
 | A job fails after you changed `models.toml` | The new file is probably a different architecture; see [Models](docs/models.md). |
 | "port ... is already in use" | Another Colab Studio (or another program) uses the port. Stop it or set another `STUDIO_PORT`. Docker: change it, then `docker compose up -d --force-recreate`. |
 | `--service` says systemd is not available | This machine has no systemd user session (a minimal container, WSL1). Start the studio with `./run.sh`, or run `./install.sh --service` from a normal login on the host. |
@@ -304,8 +314,8 @@ API (`STUDIO_PORT` from `.env`).
 
 - Your `.env` (Hugging Face token) and Colab sign-in stay on your machine; the token is copied only
   to your own Colab runtime so it can download models.
-- Prompts, uploads and results are stored in `STUDIO_DATA` on your machine. Chats older than 30 days
-  are deleted automatically.
+- Prompts, uploads and results are stored in `STUDIO_DATA` on your machine. Chats not used for 30 days
+  are deleted automatically (`STUDIO_RETENTION_DAYS`; `0` keeps everything).
 - ComfyUI is never exposed to the network; the studio reaches it through its own SSH tunnel.
 - Write requests from other websites are rejected (CSRF protection), and so is every request that
   arrives under an unknown domain name (DNS rebinding protection, see `STUDIO_ALLOWED_HOSTS`).
@@ -332,8 +342,10 @@ If Chromium cannot start for lack of system libraries, run `npx playwright insta
 | `mcp/` | MCP server (its own `install.sh` builds only this) |
 | `deploy/` | systemd service, nginx templates, `doctor.sh`, `uninstall.sh` |
 
-The API's status and error messages are in Turkish; the web UI translates them (`src/en.ts`), so
-the UI is English by default. Add the English text there when you add a new server message.
+The server's status and error messages are written in Turkish. The web UI translates them itself
+(`src/en.ts`, it sends `X-Studio-UI: 1`); every other client (MCP, `curl`, scripts) gets the same
+English text from `server/i18n.py`, which reads that table, unless it sends `Accept-Language: tr`.
+Add the English text to `en.ts` when you add a new server message (a test checks it).
 
 Code comments are in Turkish; contributions in English or Turkish are welcome.
 

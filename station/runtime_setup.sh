@@ -127,15 +127,21 @@ cd /content
 # Eklentinin install_runtime fonksiyonu pip ve VibeVoice derlemesiyle ~38 sn sürüyor; uv ile ~3 sn.
 phase "4/5 Qwen3-TTS ortamı kuruluyor"
 SHARED_RT="${COMFY}/custom_nodes/TTS-Audio-Suite/runtimes/shared_legacy_t4"
-# --clear: aynı runtime'da yeniden koşma (var olan ortamda uv venv hata veriyordu).
-uv venv -q --clear --python "${VENV}/bin/python" "${SHARED_RT}"
-# .pth yolu python'dan türetilir: sabit "lib/python3.13" sürüm değişince sessizce yanlış yere yazıyordu.
-SHARED_SITE=$("${SHARED_RT}/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
-BASE_SITE=$("${VENV}/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
-echo "${BASE_SITE}" > "${SHARED_SITE}/_tts_audio_suite_base_runtime.pth"
-uv pip install -q --no-deps -p "${SHARED_RT}" transformers==4.57.3 huggingface_hub==0.36.2 tokenizers==0.22.2 diffusers==0.39.0 kernels==0.9.0
-# Hata log dosyasına gittiği için görünmüyordu: düşerse log ekrana basılır.
-(cd "${COMFY}/custom_nodes/TTS-Audio-Suite" && BASE_SITE="${BASE_SITE}" "${VENV}/bin/python" -c "
+# Yalnızca Qwen3-TTS motoru bu ortama ihtiyaç duyar (Chatterbox, görsel, video, müzik, 3D ve yazıya dökme
+# duymaz). Bir ağ ya da paket hatası tüm açılışı düşürmesin diye hata burada yutulur, uyarı yazılır ve
+# yalnızca Qwen3-TTS işi çalışmaz. İşlev bir `if` bağlamında çağrıldığı için set -e içinde çalışmaz:
+# her komutun hatası açıkça "|| return 1" ile iletilir.
+setup_qwen3_runtime() {
+  local shared_site base_site
+  # --clear: aynı runtime'da yeniden koşma (var olan ortamda uv venv hata veriyordu).
+  uv venv -q --clear --python "${VENV}/bin/python" "${SHARED_RT}" || return 1
+  # .pth yolu python'dan türetilir: sabit "lib/python3.13" sürüm değişince sessizce yanlış yere yazıyordu.
+  shared_site=$("${SHARED_RT}/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])') || return 1
+  base_site=$("${VENV}/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])') || return 1
+  echo "${base_site}" > "${shared_site}/_tts_audio_suite_base_runtime.pth" || return 1
+  uv pip install -q --no-deps -p "${SHARED_RT}" transformers==4.57.3 huggingface_hub==0.36.2 tokenizers==0.22.2 diffusers==0.39.0 kernels==0.9.0 || return 1
+  # Hata log dosyasına gittiği için görünmüyordu: düşerse log ekrana basılır.
+  (cd "${COMFY}/custom_nodes/TTS-Audio-Suite" && BASE_SITE="${base_site}" "${VENV}/bin/python" -c "
 import json, os, sys
 from dataclasses import asdict
 from utils.runtimes.profiles import get_runtime_profile
@@ -146,8 +152,13 @@ p = get_runtime_profile('vibevoice_transformers4_shared')
     'inherited_base_site_packages': os.environ['BASE_SITE'],
     'source_python': os.path.realpath(sys.executable),
 }))
-assert runtime_is_ready(p)") >/content/shared_runtime.log 2>&1 || { cat /content/shared_runtime.log >&2; exit 1; }
-
+assert runtime_is_ready(p)") >/content/shared_runtime.log 2>&1 || { cat /content/shared_runtime.log >&2; return 1; }
+}
+rm -f /content/qwen3_runtime.failed
+if ! setup_qwen3_runtime; then
+  echo "WARNING: the Qwen3-TTS environment could not be installed (see above). Everything else works; only speech with the Qwen3-TTS engine fails until the GPU is started again." >&2
+  touch /content/qwen3_runtime.failed
+fi
 
 if [[ ${WANTED} == none ]]; then
   echo "paket beklenmiyor"; exit 0

@@ -380,7 +380,7 @@ export function registerGenerationTools(server: McpServer): void {
     {
       prompt: z.string().min(1).describe("Music genre, mood, instruments (e.g. 'acoustic pop ballad, acoustic guitar, emotional')"),
       lyrics: z.string().optional().describe("Song lyrics with structure tags like [verse], [chorus]"),
-      seconds: z.number().min(10).max(360).default(120).describe("Song duration in seconds (10 to 360)"),
+      seconds: z.number().min(10).max(360).default(120).describe("Upper limit for the song length in seconds (10 to 360), not a target: the song ends when the lyrics are done, so it is often shorter. Write more sections in the lyrics for a longer song."),
       seed: z.number().int().min(0).max(4294967295).optional(),
       thread_id: z.string().optional(),
       wait: z.boolean().default(false),

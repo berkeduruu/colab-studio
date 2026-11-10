@@ -69,6 +69,10 @@ code, pre, .readout { font-family: var(--font-outlier); }
 .panel figcaption { grid-column: 1 / 8; color: var(--color-ink-2); text-transform: none; }
 .panel figcaption strong { color: var(--color-ink); font-weight: 500; }
 
+/* demo video: 16:9 instead of the screenshots' frame */
+.screen.demo { aspect-ratio: 16 / 9; overflow: hidden; background: #000; }
+.screen.demo video { display: block; width: 100%; height: 100%; object-fit: contain; }
+
 /* product captures keep their colour */
 [data-slot][data-kind="product"] > img { filter: none; mix-blend-mode: normal; object-position: top left; }
 [data-slot][data-kind="product"]::before { content: none; }

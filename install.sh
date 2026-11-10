@@ -102,8 +102,17 @@ download_ui() {
   tmp=$(mktemp -d server/web/.dist-download.XXXXXX)
   if ! curl -fLsS --retry 3 "${url}" | tar -xz --no-same-owner -C "${tmp}" 2>/dev/null \
      || [[ ! -f ${tmp}/index.html ]]; then
-    rm -rf "${tmp}"
-    die "could not download the prebuilt UI of v${VERSION} (${url}). Install Node.js 20.19+ or 22.12+ and re-run ./install.sh to build it instead."
+    # The release of this version may not be published yet (code merged, tag not pushed): use the latest one.
+    local latest="https://github.com/${REPO_SLUG}/releases/latest/download/web-dist.tar.gz"
+    rm -rf "${tmp}"; tmp=$(mktemp -d server/web/.dist-download.XXXXXX)
+    note "v${VERSION} has no prebuilt UI (yet); trying the latest release instead: ${latest}"
+    if ! curl -fLsS --retry 3 "${latest}" | tar -xz --no-same-owner -C "${tmp}" 2>/dev/null \
+       || [[ ! -f ${tmp}/index.html ]]; then
+      rm -rf "${tmp}"
+      die "could not download the prebuilt UI of v${VERSION} (${url}). Install Node.js 20.19+ or 22.12+ and re-run ./install.sh to build it instead."
+    fi
+    note "WARNING: the downloaded UI is from an older release than this code (v${VERSION}); some newer UI features may be missing."
+    note "Install Node.js 20.19+ or 22.12+, then run: rm -rf server/web/dist && ./install.sh"
   fi
   chmod 755 "${tmp}"
   rm -rf server/web/dist
@@ -146,13 +155,35 @@ else
   command -v uv >/dev/null || die "uv was installed but is not on PATH; open a new terminal and re-run ./install.sh"
 fi
 
+# colab_version BIN: google-colab-cli version next to the given colab binary (empty if unknown). The
+# studio finds the CLI's Python the same way (server/config.py colab_python).
+colab_version() {
+  local py
+  py="$(dirname "$(readlink -f "$1")")/python"
+  [[ -x ${py} ]] || return 0
+  "${py}" -c 'import importlib.metadata as m; print(m.version("google-colab-cli"))' 2>/dev/null || true
+}
+
 say "2/6 Google Colab CLI"
-if command -v colab >/dev/null; then
-  note "found $(command -v colab)"
+# The studio reads this tool's text output, so another version can break it with a meaningless error:
+# an existing colab of a different version is replaced by the pinned one (also on --update).
+COLAB=$(command -v colab || true)
+have=
+[[ -n ${COLAB} ]] && have=$(colab_version "${COLAB}")
+if [[ -n ${COLAB} && ${have} == "${COLAB_CLI_VERSION}" ]]; then
+  note "found ${COLAB} (${have})"
 else
-  uv tool install --python 3.12 "google-colab-cli==${COLAB_CLI_VERSION}"
+  [[ -n ${COLAB} ]] && note "found ${COLAB} (version ${have:-unknown}), the studio needs ${COLAB_CLI_VERSION}: installing it"
+  uv tool install --force --python 3.12 "google-colab-cli==${COLAB_CLI_VERSION}"
+  COLAB=$(command -v colab || true)
+  if [[ -z ${COLAB} || $(colab_version "${COLAB}") != "${COLAB_CLI_VERSION}" ]]; then
+    # Another colab earlier on PATH: the studio is pointed at the pinned one through COLAB_BIN (step 5).
+    COLAB="$(uv tool dir --bin)/colab"
+    [[ $(colab_version "${COLAB}") == "${COLAB_CLI_VERSION}" ]] || die "could not install google-colab-cli ${COLAB_CLI_VERSION}"
+    COLAB_BIN_PIN=${COLAB}
+    note "another colab comes first on PATH; the studio will use ${COLAB} (COLAB_BIN in .env)"
+  fi
 fi
-COLAB=$(command -v colab) || die "colab CLI is not on PATH after installing it"
 
 say "3/6 Python environment (.venv)"
 uv venv -q --allow-existing --python 3.12 .venv
@@ -233,6 +264,10 @@ if [[ ${fresh} == 1 ]]; then
   ENV_FILE=.env
   note "written to .env (edit it any time, then restart the studio)"
 fi
+if [[ -n ${COLAB_BIN_PIN:-} ]]; then
+  set_env COLAB_BIN "${COLAB_BIN_PIN}"
+  note "COLAB_BIN=${COLAB_BIN_PIN}"
+fi
 
 say "6/6 Google sign-in for the Colab CLI"
 if [[ -f ~/.config/colab-cli/token.json ]]; then
@@ -260,8 +295,20 @@ if [[ ${SERVICE} == 1 ]]; then
   else
   session=$(grep -E '^STUDIO_SESSION=' .env | cut -d= -f2 || true)
   mkdir -p ~/.config/systemd/user
-  sed -e "s|@REPO@|${REPO}|g" -e "s|@PATH@|${PATH}|g" -e "s|@COLAB@|${COLAB}|g" -e "s|@SESSION@|${session:-studio}|g" \
-    deploy/colab-studio.service > ~/.config/systemd/user/colab-studio.service
+  # Paths may contain spaces, "%" or "$": the unit file quotes them and escapes what systemd expands.
+  REPO="${REPO}" PATH_VALUE="${PATH}" COLAB="${COLAB}" SESSION_NAME="${session:-studio}" python3 - deploy/colab-studio.service \
+    > ~/.config/systemd/user/colab-studio.service <<'PY'
+import os, sys
+esc = lambda v: v.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$")
+# WorkingDirectory= is not split or expanded like a command line, so only "%" needs escaping there.
+lines = []
+for line in open(sys.argv[1]).read().splitlines(keepends=True):
+    fix = (lambda v: v.replace("%", "%%")) if line.startswith("WorkingDirectory=") else esc
+    for key, env in (("@REPO@", "REPO"), ("@PATH@", "PATH_VALUE"), ("@COLAB@", "COLAB"), ("@SESSION@", "SESSION_NAME")):
+        line = line.replace(key, fix(os.environ[env]))
+    lines.append(line)
+sys.stdout.write("".join(lines))
+PY
   systemctl --user daemon-reload
   systemctl --user enable -q colab-studio
   systemctl --user restart colab-studio

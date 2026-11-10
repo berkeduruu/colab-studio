@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  api, ApiError, isDone, isFailed, isPending, type ImageParams, type Job, type Mode, type Model3DParams, type MusicParams, type Preset, type RuntimeState, type SpeechParams, type Thread,
+  api, ApiError, isDone, isFailed, isPending, MODE_LIST, type ImageParams, type Job, type Mode, type Model3DParams, type MusicParams, type Preset, type RuntimeState, type SpeechParams, type Thread,
   type ThreadDetail, type TranscribeParams, type VideoParams,
 } from "./api";
 import {
@@ -136,7 +136,8 @@ export default function App() {
     api
       .settings()
       .then((s) => {
-        if (s["mode"]) setModeState(s["mode"] as Mode);
+        // Bilinmeyen mod (eski sürümden ya da elle yazılmış ayar) arayüzü boş bırakmasın: varsayılan kalır.
+        if (MODE_LIST.includes(s["mode"] as Mode)) setModeState(s["mode"] as Mode);
         if (s["image.params"]) setParamsState({ ...DEFAULT_PARAMS, ...(s["image.params"] as ImageParams) });
         if (s["video.params"]) setVideoParamsState({ ...DEFAULT_VIDEO_PARAMS, ...(s["video.params"] as VideoParams) });
         if (s["music.params"]) setMusicParamsState({ ...DEFAULT_MUSIC_PARAMS, ...(s["music.params"] as MusicParams) });

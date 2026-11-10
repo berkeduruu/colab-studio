@@ -1065,3 +1065,13 @@ test.describe("dayanıklılık ve erişilebilirlik", () => {
     api.assertClean();
   });
 });
+
+test("kayıtlı mod bilinmiyorsa arayüz boş kalmaz, görsel moduyla açılır", async ({ page }) => {
+  const api = new MockApi();
+  api.settings["mode"] = "nonsense-mode";
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await open(page, api);
+  await expect(page.locator(".composer textarea")).toBeVisible();
+  expect(errors).toEqual([]);
+});

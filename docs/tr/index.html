@@ -42,7 +42,7 @@
         "description": "Self-hosted web studio that generates images, video with sound, music, speech, voice clones and 3D models, and transcribes audio, on a Google Colab L4 GPU rented only while it works.",
         "applicationCategory": "MultimediaApplication",
         "operatingSystem": "Linux, Docker",
-        "softwareVersion": "0.1.2",
+        "softwareVersion": "0.1.3",
         "license": "https://www.gnu.org/licenses/agpl-3.0.html",
         "isAccessibleForFree": true,
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -83,7 +83,7 @@
             "name": "Sonuçlarım nerede durur?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "Kendi makinende. Sonuçlar GPU'dan geri kopyalanır ve GPU kapandıktan sonra da durur. 30 günden eski sohbetler kendiliğinden silinir."
+              "text": "Kendi makinende. Sonuçlar GPU'dan geri kopyalanır ve GPU kapandıktan sonra da durur. 30 gündür kullanılmayan sohbetler kendiliğinden silinir."
             }
           },
           {
@@ -132,6 +132,21 @@
           <a class="btn btn--primary" href="https://github.com/berkeduruu/colab-studio">github’dan indir</a>
           <a class="btn btn--secondary" href="#install">kuruluma bak</a>
         </div>
+      </div>
+    </section>
+
+    <section class="section--tight" id="demo" aria-labelledby="demo-h">
+      <div class="container">
+        <h2 id="demo-h" class="visually-hidden">Tanıtım videosu</h2>
+        <figure class="panel">
+          <div class="screen demo">
+            <video controls playsinline preload="metadata" poster="../assets/demo-poster.jpg" width="1920" height="1080" aria-label="Colab Stüdyo'yu 39 saniyede tanıtan video">
+              <source src="../assets/demo.mp4" type="video/mp4">
+              <a href="../assets/demo.mp4">Tanıtım videosunu indir (MP4, 5 MB)</a>
+            </video>
+          </div>
+          <figcaption><strong>39 saniyelik tanıtım.</strong> Videodaki görseller, klipler, 3D model ve müzik Colab Stüdyo ile üretildi.</figcaption>
+        </figure>
       </div>
     </section>
 
@@ -247,7 +262,7 @@
           </details>
           <details>
             <summary>Sonuçlarım nerede durur?</summary>
-            <div class="answer"><p>Kendi makinende. Sonuçlar GPU’dan geri kopyalanır ve GPU kapandıktan sonra da durur. 30 günden eski sohbetler kendiliğinden silinir.</p></div>
+            <div class="answer"><p>Kendi makinende. Sonuçlar GPU’dan geri kopyalanır ve GPU kapandıktan sonra da durur. 30 gündür kullanılmayan sohbetler kendiliğinden silinir.</p></div>
           </details>
           <details>
             <summary>Claude Code kullanabilir mi?</summary>

@@ -42,7 +42,7 @@
         "description": "Self-hosted web studio that generates images, video with sound, music, speech, voice clones and 3D models, and transcribes audio, on a Google Colab L4 GPU rented only while it works.",
         "applicationCategory": "MultimediaApplication",
         "operatingSystem": "Linux, Docker",
-        "softwareVersion": "0.1.2",
+        "softwareVersion": "0.1.3",
         "license": "https://www.gnu.org/licenses/agpl-3.0.html",
         "isAccessibleForFree": true,
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -56,7 +56,7 @@
           { "@type": "Question", "name": "Does the free Colab tier work?", "acceptedAnswer": { "@type": "Answer", "text": "No. The free tier does not offer L4 GPUs. You need Colab compute units: Colab Pro, Pro+ or pay as you go." } },
           { "@type": "Question", "name": "Can I use a T4 or an A100 instead?", "acceptedAnswer": { "@type": "Answer", "text": "No. The workflows, VRAM budgets and time estimates were all measured on the L4, so it is the only GPU supported." } },
           { "@type": "Question", "name": "Can I open it from my phone?", "acceptedAnswer": { "@type": "Answer", "text": "Yes: through an SSH tunnel, by IP on a trusted network, or on your own domain behind nginx with HTTPS and a password, set up by deploy/setup-nginx.sh." } },
-          { "@type": "Question", "name": "Where do my results live?", "acceptedAnswer": { "@type": "Answer", "text": "On your own machine. Results are copied back from the GPU and stay after it is released. Chats older than 30 days are deleted automatically." } },
+          { "@type": "Question", "name": "Where do my results live?", "acceptedAnswer": { "@type": "Answer", "text": "On your own machine. Results are copied back from the GPU and stay after it is released. Chats not used for 30 days are deleted automatically." } },
           { "@type": "Question", "name": "Can Claude Code use it?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The mcp folder contains an MCP server, so Claude Code or Claude Desktop can start the GPU, generate media, wait for jobs and look at the results." } },
           { "@type": "Question", "name": "Is it made by Google?", "acceptedAnswer": { "@type": "Answer", "text": "No. Colab Studio is an independent open-source project under AGPL-3.0. It uses Google's official Colab CLI." } }
         ]
@@ -89,6 +89,21 @@
           <a class="btn btn--primary" href="https://github.com/berkeduruu/colab-studio">get it on github</a>
           <a class="btn btn--secondary" href="#install">see the install</a>
         </div>
+      </div>
+    </section>
+
+    <section class="section--tight" id="demo" aria-labelledby="demo-h">
+      <div class="container">
+        <h2 id="demo-h" class="visually-hidden">Demo video</h2>
+        <figure class="panel">
+          <div class="screen demo">
+            <video controls playsinline preload="metadata" poster="assets/demo-poster.jpg" width="1920" height="1080" aria-label="A 39-second tour of Colab Studio">
+              <source src="assets/demo.mp4" type="video/mp4">
+              <a href="assets/demo.mp4">Download the demo video (MP4, 5 MB)</a>
+            </video>
+          </div>
+          <figcaption><strong>A 39-second tour.</strong> Every image, clip, 3D model and the music in it were made with Colab Studio. On-screen text is in Turkish.</figcaption>
+        </figure>
       </div>
     </section>
 
@@ -204,7 +219,7 @@
           </details>
           <details>
             <summary>Where do my results live?</summary>
-            <div class="answer"><p>On your own machine. Results are copied back from the GPU and stay after it is released. Chats older than 30 days are deleted automatically.</p></div>
+            <div class="answer"><p>On your own machine. Results are copied back from the GPU and stay after it is released. Chats not used for 30 days are deleted automatically.</p></div>
           </details>
           <details>
             <summary>Can Claude Code use it?</summary>

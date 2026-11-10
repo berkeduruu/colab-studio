@@ -23,7 +23,16 @@ echo "Tools installed by install.sh"
 if command -v uv >/dev/null; then ok "$(uv --version)"; else fail "uv is missing: run ./install.sh"; fi
 colab=${COLAB_BIN:-$(envget COLAB_BIN)}
 colab=${colab:-$(command -v colab || true)}
-if [[ -n ${colab} && -x ${colab} ]]; then ok "colab CLI: ${colab}"; else fail "colab CLI not found: run ./install.sh (or set COLAB_BIN in .env)"; fi
+colab_want=$(sed -n 's/^COLAB_CLI_VERSION=//p' install.sh)
+if [[ -n ${colab} && -x ${colab} ]]; then
+  colab_py="$(dirname "$(readlink -f "${colab}")")/python"
+  colab_have=$("${colab_py}" -c 'import importlib.metadata as m; print(m.version("google-colab-cli"))' 2>/dev/null || true)
+  # The studio reads the CLI's text output: another version can break starting the GPU.
+  if [[ ${colab_have} == "${colab_want}" ]]; then ok "colab CLI ${colab_have}: ${colab}"
+  else warn "colab CLI ${colab_have:-of unknown version} at ${colab}; the studio is tested with ${colab_want}: run ./install.sh --update"; fi
+else
+  fail "colab CLI not found: run ./install.sh (or set COLAB_BIN in .env)"
+fi
 if [[ -x .venv/bin/python ]] && .venv/bin/python -c 'import aiohttp' 2>/dev/null; then
   ok "Python environment (.venv, $(.venv/bin/python -c 'import platform; print(platform.python_version())'))"
 else

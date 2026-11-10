@@ -5,6 +5,9 @@
 export const SERVER_PATTERNS: [string, string][] = [
   // doğrulama (server/app.py)
   ["bilinmeyen ayar: {x}", "unknown setting: {x}"],
+  ["başka bir siteden gelen istek reddedildi (Origin '{o}', Host '{h}': kendi ters vekilin varsa Host başlığını olduğu gibi ilet, örn. nginx'te 'proxy_set_header Host $host;')",
+    "request from another site was rejected (Origin '{o}', Host '{h}': if you run your own reverse proxy, pass the Host header through unchanged, e.g. 'proxy_set_header Host $host;' in nginx)"],
+  ["{x} bir nesne olmalı", "{x} must be an object"],
   ["bilinmeyen hazır ses: {x}", "unknown preset voice: {x}"],
   ["bilinmeyen iş türü: {x}", "unknown job type: {x}"],
   ["bilinmeyen motor: {x}", "unknown engine: {x}"],
@@ -62,6 +65,7 @@ export const EN: Record<string, string> = {
   "müzik için görsel eklenemez": "images cannot be attached to music",
   "ön ayar adı boş olamaz": "the preset name cannot be empty",
   "params bir nesne olmalı": "params must be an object",
+  "referans dosyaları görsel olmalı": "reference files must be images",
   "seed 0 ile 2^32 arası bir tam sayı olmalı": "seed must be an integer between 0 and 2^32",
   "seslendirme için en fazla 1 ses dosyası (klonlanacak ses) eklenebilir": "speech accepts at most 1 audio file (the voice to clone)",
   "video için en fazla 2 görsel (ilk ve son kare)": "video accepts at most 2 images (first and last frame)",

@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import re
+import shlex
 import shutil
 import time
 from collections import deque
@@ -27,6 +28,10 @@ REPO_DIR = config.REPO_DIR
 DATA_DIR = config.DATA_DIR
 DURATIONS_FILE = DATA_DIR / "startup_durations.json"
 OWNED_FILE = DATA_DIR / "owned_endpoints.json"  # stüdyonun açtığı GPU runtime'ları
+# "colab new" sürerken yazılır: açılıştan önce açık olan runtime'lar. colab new, runtime'ı aldıktan sonra
+# ama oturumu adlandırmadan ölürse (iptal, zaman aşımı, servis öldürüldü) runtime "[?]" adıyla sahipsiz
+# kalır; bu listede olmayan "[?]" runtime'lar o yarım açılışındır ve reap_owned onları bırakır.
+PENDING_FILE = DATA_DIR / "start_pending.json"
 SSH_DIR = DATA_DIR / "ssh"
 SSH_CONF = SSH_DIR / "config"
 SSH_KEY = SSH_DIR / "id_ed25519"
@@ -42,11 +47,22 @@ MODEL_POLL_SECONDS = 3
 MODEL_STALL_SECONDS = 600
 
 
+def _ssh_token_safe(text):
+    """ssh_config genişletir "%x" dizilerini (%h, %p, ...) ProxyCommand ve IdentityFile değerlerinde: yolda
+    kalan "%" çift yazılır."""
+    return str(text).replace("%", "%%")
+
+
 def ssh_conf_text():
+    # Yollar boşluk içerebilir (ör. "~/My Projects/colab-studio"): ProxyCommand satırın geri kalanını kabuğa
+    # verir (kabuk tırnağı), IdentityFile ise ssh'ın kendi çift tırnağını ister.
+    proxy = " ".join(shlex.quote(_ssh_token_safe(x)) for x in (
+        "sh", Path(__file__).parent / "colab_proxy.sh", SESSION, COLAB_SESSIONS, COLAB, SSH_KEY))
+    identity = _ssh_token_safe(SSH_KEY).replace("\\", "\\\\").replace('"', '\\"')
     return f"""Host colab
-  ProxyCommand sh {Path(__file__).parent / "colab_proxy.sh"} {SESSION} {COLAB_SESSIONS} {COLAB} {SSH_KEY}
+  ProxyCommand {proxy}
   User root
-  IdentityFile {SSH_KEY}
+  IdentityFile "{identity}"
   IdentitiesOnly yes
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
@@ -234,8 +250,14 @@ async def run(*cmd, timeout, shell=False, quiet=False, stdin_data=None):
 async def _start():
     try:
         _begin_step(0)
+        try:
+            _write_json(PENDING_FILE, _endpoints(await run(COLAB, "sessions", timeout=60, quiet=True)))
+        except (RuntimeError, OSError) as e:
+            # Önceki runtime'lar bilinmeden sahipsiz runtime ayırt edilemez; açılış yine sürer.
+            log(f"açık runtime'lar okunamadı, yarım açılış izlenmeyecek: {short_error(e, 200)}")
         await run(COLAB, "new", "--gpu", GPU, "-s", SESSION, timeout=600)
         _own(json.loads(COLAB_SESSIONS.read_text())[SESSION]["endpoint"])
+        PENDING_FILE.unlink(missing_ok=True)
         state["start_balance"] = parse_usage(await run(COLAB, "usage", timeout=60))["balance"]
 
         _begin_step(1)
@@ -249,7 +271,7 @@ async def _start():
                       timeout=30, stdin_data=config.HF_TOKEN.encode())
         else:
             log("HF_TOKEN yok: modeller girişsiz iner (Hugging Face hız sınırına takılabilir)")
-        await run(f"tar -C '{REPO_DIR}' -cz --exclude=__pycache__ station | ssh -F '{SSH_CONF}' colab 'tar -C /content -xz'", timeout=120, shell=True)
+        await run(f"tar -C {shlex.quote(str(REPO_DIR))} -cz --exclude=__pycache__ station | ssh -F {shlex.quote(str(SSH_CONF))} colab 'tar -C /content -xz'", timeout=120, shell=True)
         # Model kataloğu (models.toml): station/models.py ve iş akışları aynı dosyayı kullanır.
         await run(*SSH, "colab", "install -D -m 644 /dev/stdin /content/station/models.toml",
                   timeout=30, stdin_data=config.MODELS_FILE.read_bytes())
@@ -275,7 +297,7 @@ async def _start():
         set_phase("stopping", "açılış başarısız, kapatılıyor")
         try:
             await stop_runtime()
-        except RuntimeError as stop_error:
+        except Exception as stop_error:  # ne olursa olsun "stopping"de takılı kalmasın
             log(short_error(stop_error))  # bırakılamayan runtime'ı watchdog yeniden dener
         set_phase("error", short_error(e))
 
@@ -419,27 +441,61 @@ async def _warm_image():
         warming = False
 
 
+def _write_json(path, value):
+    """Atomik yazar: yazma sırasında çökme, güç kesintisi ya da dolu disk yarım JSON bırakmasın."""
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(value))
+    os.replace(tmp, path)
+
+
+def _read_list(path):
+    """Okunamayan ya da bozuk dosya boş liste sayılır: kapanış ve servis açılışı bir dosya yüzünden
+    durmamalı (durursa GPU "stopping"de kalır, servis hiç açılmaz)."""
+    try:
+        value = json.loads(path.read_text()) if path.exists() else []
+    except (OSError, ValueError) as e:
+        log(f"{path.name} okunamadı, boş sayılıyor: {short_error(e, 200)}")
+        return []
+    return [e for e in value if isinstance(e, str)] if isinstance(value, list) else []
+
+
 def _owned():
-    return json.loads(OWNED_FILE.read_text()) if OWNED_FILE.exists() else []
+    return _read_list(OWNED_FILE)
 
 
 def _own(endpoint):
-    OWNED_FILE.write_text(json.dumps(_owned() + [endpoint]))
+    _write_json(OWNED_FILE, _owned() + [endpoint])
+
+
+_SESSION_LINE = re.compile(r"^\[(.*?)\] (\S+)", re.M)
+
+
+def _endpoints(sessions_text, name=None):
+    """`colab sessions` çıktısındaki runtime'lar ("[ad] endpoint | ..."); name verilirse yalnızca o adla."""
+    return [e for n, e in _SESSION_LINE.findall(sessions_text) if name is None or n == name]
 
 
 async def reap_owned():
     """Stüdyonun açtığı ama hâlâ açık kalan runtime'ları bırakır (ör. yarım kalmış bir açılıştan
     artakalan, artık "comfy" adını taşımayan oturum). Yalnızca kendi açtıklarına dokunur."""
     owned = _owned()
-    if not owned:
+    pending = PENDING_FILE.exists()
+    if not owned and not pending:
         return
     sessions = await run(COLAB, "sessions", timeout=60, quiet=True)
     alive = [e for e in owned if e in sessions]
+    # Yarım kalmış açılışın adsız runtime'ı. Açılış hâlâ sürüyorsa (bu tur beklerken başladıysa) onun
+    # dosyasıdır: dokunulmaz, açılış kendisi tamamlar ya da kapanışta bırakır.
+    if pending and state["phase"] != "starting":
+        before = set(_read_list(PENDING_FILE))
+        alive += [e for e in _endpoints(sessions, "?") if e not in before and e not in alive]
     for e in alive:
         log(f"stüdyonun açık kalan runtime'ı kapatılıyor: {e}")
         await run(config.colab_python(), "-c", f"from colab_cli.common import state; state.client.unassign({e!r})", timeout=60)
     # Bu arada yeni bir açılış kendi runtime'ını eklemiş olabilir; yalnızca incelenenler silinir.
-    OWNED_FILE.write_text(json.dumps([e for e in _owned() if e not in owned]))
+    _write_json(OWNED_FILE, [e for e in _owned() if e not in owned])
+    if pending and state["phase"] != "starting":
+        PENDING_FILE.unlink(missing_ok=True)
 
 
 async def stop_runtime():
@@ -460,7 +516,7 @@ async def stop_runtime():
         errors.append(e)
     try:
         await reap_owned()
-    except RuntimeError as e:
+    except Exception as e:  # yerel durum her durumda temizlensin
         errors.append(e)
     state["last_busy"] = None
     state["start_balance"] = None
@@ -574,7 +630,7 @@ async def run_stop(reason):
     begin_stop(reason)
     try:
         await stop_runtime()
-    except RuntimeError as e:
+    except Exception as e:  # beklenmedik hata da "stopping"de bırakmasın
         set_phase("error", short_error(e))
         return
     set_phase("off", reason)
@@ -670,7 +726,7 @@ async def _watch_once(http, has_pending_jobs, on_credits):
             await log_crash_context()
             try:
                 await stop_runtime()
-            except RuntimeError as stop_error:
+            except Exception as stop_error:  # "stopping"de takılı kalmasın
                 log(short_error(stop_error))  # bırakılamayan runtime sonraki turda reap_owned ile denenir
             set_phase("error", f"ComfyUI'ye ulaşılamıyor, runtime kapatıldı: {e!r}")
 

@@ -351,7 +351,7 @@ def test_setup_script_truncates_logs_and_surfaces_the_shared_runtime_error():
     """comfy.log sınırsız büyüyordu; Qwen3-TTS hatası ise yalnızca log dosyasına gidiyordu."""
     setup = _setup_text()
     assert ": > /content/comfy.log" in setup
-    assert "|| { cat /content/shared_runtime.log >&2; exit 1; }" in setup
+    assert "|| { cat /content/shared_runtime.log >&2; return 1; }" in setup
 
 
 def test_setup_script_pins_the_download_stack_versions():
@@ -364,3 +364,15 @@ def test_setup_script_pins_the_download_stack_versions():
     assert re.search(r"^UV_VERSION=[0-9]+\.[0-9]+\.[0-9]+$", setup, re.M)
     assert 'pip install -q "uv==${UV_VERSION}"' in setup
     assert not re.search(r"^uv pip install -q -p /content/hfenv huggingface_hub$", setup, re.M)
+
+
+def test_qwen3_runtime_failure_does_not_block_the_other_modes():
+    """Qwen3-TTS ortamı kurulamazsa açılış düşmez (yalnızca o motor çalışmaz). İşlev bir `if` bağlamında
+    çağrıldığı için set -e içinde çalışmaz: her komutun hatası açıkça döndürülmeli."""
+    setup = _setup_text()
+    body = setup.split("setup_qwen3_runtime() {")[1].split("\n}\n")[0]
+    for start in ("  uv venv", "  shared_site=", "  base_site=", "  echo ", "  uv pip install"):
+        line = next(l for l in body.splitlines() if l.startswith(start))
+        assert line.rstrip().endswith("|| return 1"), line
+    assert "if ! setup_qwen3_runtime; then" in setup
+    assert "touch /content/qwen3_runtime.failed" in setup

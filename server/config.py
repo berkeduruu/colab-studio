@@ -55,6 +55,8 @@ ALLOWED_HOSTS = {
 }
 # Database, generated media, SSH key and learned timings.
 DATA_DIR = Path(os.environ.get("STUDIO_DATA", "~/.local/share/colab-studio")).expanduser()
+# Chats (and their media) not used for this many days are deleted automatically. 0 keeps everything.
+RETENTION_DAYS = _int_setting("STUDIO_RETENTION_DAYS", "30", 0, 36500, "it must be a number of days from 1 to 36500, or 0 to keep everything")
 # The GPU runtime is released after this many idle minutes (it costs Colab compute units).
 IDLE_MINUTES = _int_setting("STUDIO_IDLE_MINUTES", "15", 1, 24 * 60, "it must be a number of minutes from 1 to 1440")
 # Only L4 is supported: all workflows, VRAM budgets and time estimates were measured on it.
