@@ -184,6 +184,9 @@ def set_phase(phase, detail=""):
     log(f"[{phase}] {detail}")
 
 
+_durations_warned = False
+
+
 def expected_durations():
     """Öğrenilmiş açılış adımı süreleri. Dosya bozuksa (yarım yazma, elle düzenleme, disk hatası)
     varsayılanlara düşülür: bozuk dosya arayüzün tamamını 500'e düşürmemeli (_learn atomik yazar)."""
@@ -192,8 +195,15 @@ def expected_durations():
         data = json.loads(DURATIONS_FILE.read_text())
         if isinstance(data, dict):
             learned = {k: v for k, v in data.items() if isinstance(v, (int, float))}
+    except FileNotFoundError:
+        pass  # ilk açılış: henüz ölçülmüş süre yok, varsayılanlar normaldir
     except (OSError, ValueError) as e:
-        log(f"açılış süreleri okunamadı, varsayılanlar kullanılıyor: {short_error(e, 200)}")
+        # Her durum yoklamasında çağrılır: bozuk dosya için tek satır yazılır, yoksa günlük (300 satır) dolar
+        # ve açılışın asıl satırları silinirdi.
+        global _durations_warned
+        if not _durations_warned:
+            _durations_warned = True
+            log(f"açılış süreleri okunamadı, varsayılanlar kullanılıyor: {short_error(e, 200)}")
     return {key: learned.get(key, default) for key, _, default in STEPS}
 
 

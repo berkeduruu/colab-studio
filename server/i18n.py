@@ -13,7 +13,7 @@ from pathlib import Path
 EN_TS = Path(__file__).parent / "web" / "src" / "en.ts"
 _STRING = r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\''
 # Yanıtta çevrilen alanlar; kullanıcının istemi ya da dosya adı gibi alanlara dokunulmaz.
-TEXT_KEYS = {"error", "detail", "stage", "setup"}
+TEXT_KEYS = {"error", "detail", "stage", "setup", "label"}
 LIST_KEYS = {"steps", "lines"}
 
 
