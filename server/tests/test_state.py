@@ -384,3 +384,20 @@ async def test_missing_colab_login_is_reported(db, monkeypatch, tmp_path):
     monkeypatch.setattr(runtime, "COLAB", str(colab))
     monkeypatch.setattr(runtime, "COLAB_TOKEN", tmp_path / "token.json")
     assert "colab usage" in PREFLIGHT()
+
+
+def test_missing_durations_file_is_silent_and_a_corrupt_one_logs_once(tmp_path, monkeypatch):
+    """Açılış sürerken her durum yoklaması expected_durations'ı çağırır: ilk kurulumda dosya yoktur (normal) ve
+    bozuk dosya için tek satır yazılır; yoksa günlük (300 satır) dolar, açılışın asıl satırları silinirdi."""
+    import runtime
+
+    monkeypatch.setattr(runtime, "DURATIONS_FILE", tmp_path / "startup_durations.json")
+    monkeypatch.setattr(runtime, "_durations_warned", False)
+    runtime.logs.clear()
+    for _ in range(20):
+        runtime.expected_durations()
+    assert not [l for l in runtime.logs if "okunamadı" in l]
+    (tmp_path / "startup_durations.json").write_text("{bozuk")
+    for _ in range(20):
+        assert runtime.expected_durations()
+    assert len([l for l in runtime.logs if "okunamadı" in l]) == 1
