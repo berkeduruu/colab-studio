@@ -1,5 +1,5 @@
 import { Box, Copy, Download, Loader2, Lock, Pencil, RefreshCw, X } from "lucide-react";
-import { isDone, isFailed, isPending, mediaUrl, type Job, type Mode, type RuntimeState } from "./api";
+import { isCancelled, isDone, isFailed, isPending, mediaUrl, type Job, type Mode, type RuntimeState } from "./api";
 import { facesLabel, MODEL3D_TEXTURES } from "./Chips";
 import { isAudio } from "./Composer";
 import { downloadText, formatDuration, pct } from "./format";
@@ -252,6 +252,15 @@ export function Feed({ mode, jobs, rt, onSuggestion, onRetry, onEdit, onReusePro
             {isFailed(job) && (
               <>
                 <div className="error-text" role="alert">{tServer(job.error)}</div>
+                <div className="actions">
+                  <button className="btn ghost" onClick={() => onRetry(job)}><RefreshCw size={14} /> {t("Tekrar dene")}</button>
+                </div>
+              </>
+            )}
+            {/* İptal bir hata değil: kırmızı uyarı yerine sakin bir satır. */}
+            {isCancelled(job) && (
+              <>
+                <div className="meta cancelled-text">{t("İptal edildi")}</div>
                 <div className="actions">
                   <button className="btn ghost" onClick={() => onRetry(job)}><RefreshCw size={14} /> {t("Tekrar dene")}</button>
                 </div>

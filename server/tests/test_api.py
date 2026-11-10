@@ -217,7 +217,8 @@ async def test_thread_delete_removes_jobs_outputs_and_references(client, upload)
     job = await (await create(client, kind="image", params=IMAGE, inputs=[ref])).json()
     out = studio.MEDIA_DIR / f"{job['id']}_0.png"
     out.write_bytes(b"png")
-    studio._update(job["id"], status="done", outputs=f'["{out.name}"]')
+    studio._set_status(job["id"], "running")
+    studio._set_status(job["id"], "done", outputs=f'["{out.name}"]')
     assert (await client.delete(f"/api/threads/{job['thread_id']}")).status == 200
     assert not out.exists()
     assert not (studio.MEDIA_DIR / ref).exists()
@@ -229,7 +230,8 @@ async def test_thread_delete_keeps_output_used_by_another_thread(client):
     img = await (await create(client, kind="image", params=IMAGE)).json()
     out = studio.MEDIA_DIR / f"{img['id']}_0.png"
     out.write_bytes(b"png")
-    studio._update(img["id"], status="done", outputs=f'["{out.name}"]')
+    studio._set_status(img["id"], "running")
+    studio._set_status(img["id"], "done", outputs=f'["{out.name}"]')
     m3d = await (await create(client, kind="model3d", prompt="", params=MODEL3D, inputs=[out.name])).json()
     assert m3d["thread_id"] != img["thread_id"]
     assert (await client.delete(f"/api/threads/{img['thread_id']}")).status == 200
@@ -413,3 +415,48 @@ async def test_gpu_stop_returns_immediately_and_shuts_down_in_background(client,
     release.set()
     await asyncio.sleep(0.05)
     runtime.set_phase("off")
+
+
+async def test_manual_gpu_stop_cancels_pending_jobs(client, monkeypatch):
+    """Elle kapatma sıradaki işleri de durdurur: kalsalardı ilki GPU'yu birkaç saniye sonra yeniden
+    açardı. Çalışan iş ComfyUI'yle kesilir ve bağlantı hatası yerine iptal olarak kapanır."""
+    async def fake_run_stop(reason):
+        pass
+
+    monkeypatch.setattr(runtime, "run_stop", fake_run_stop)
+    running = studio.create_job("t", "image", "image", "a", {}, [])
+    queued = studio.create_job("t", "image", "image", "b", {}, [])
+    waiting = studio.create_job("t", "image", "image", "c", {}, [])
+    studio._set_status(running["id"], "running")
+    studio._set_status(waiting["id"], "waiting_gpu")
+    runtime.set_phase("ready", "GPU hazır")
+    try:
+        r = await client.post("/api/runtime/stop")
+        assert r.status == 200 and (await r.json())["queue"]["order"] == [running["id"]]
+        for jid in (queued["id"], waiting["id"]):
+            job = await (await client.get(f"/api/jobs/{jid}")).json()
+            assert job["status"] == "error" and job["cancelled"] and job["error"] == studio.CANCELLED
+        assert studio.get_job(running["id"])["status"] == "running" and running["id"] in studio.cancelled
+    finally:
+        studio.cancelled.clear()
+        runtime.set_phase("off")
+
+
+async def test_media_list_shows_outputs_and_uploads_newest_first(client, upload):
+    """MCP medyayı diskten değil buradan okur: stüdyo Docker'da ya da başka makinede olabilir."""
+    import os
+    ref = await upload()
+    out = studio.MEDIA_DIR / "abc_0.png"
+    out.write_bytes(b"png")
+    old = studio.MEDIA_DIR / "old_0.mp4"
+    old.write_bytes(b"mp4")
+    os.utime(old, (1, 1))
+    body = await (await client.get("/api/media")).json()
+    names = [f["name"] for f in body["files"]]
+    assert set(names) == {"abc_0.png", ref, "old_0.mp4"} and names[-1] == "old_0.mp4"  # en eski en sonda
+    by_name = {f["name"]: f for f in body["files"]}
+    assert by_name["abc_0.png"]["is_output"] and not by_name[ref]["is_output"] and by_name["abc_0.png"]["size"] == 3
+    assert body["disk"]["total"] > 0
+    only_mp4 = await (await client.get("/api/media?ext=mp4&limit=5")).json()
+    assert [f["name"] for f in only_mp4["files"]] == ["old_0.mp4"]
+    assert (await client.get("/api/media?limit=x")).status == 400

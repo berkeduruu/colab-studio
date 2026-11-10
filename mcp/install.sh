@@ -72,8 +72,11 @@ child.on("exit", (code) => {
 child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "verify", version: "1.0" } } }) + "\n");
 '
 
+# Full path to node: a non-interactive ssh shell (and some MCP clients) do not load nvm/fnm, so a
+# bare `node` may not be found there. -s user: available in every project, not only this folder.
+node_bin=$(command -v node)
 echo "=== Done ==="
-echo "Add it to Claude Code on this machine:"
-echo "  claude mcp add colab-studio -- node \"$SCRIPT_DIR/dist/index.js\""
+echo "Add it to Claude Code on this machine (all projects):"
+echo "  claude mcp add -s user colab-studio -- \"$node_bin\" \"$SCRIPT_DIR/dist/index.js\""
 echo "From another computer over SSH (replace my-server with your ssh host):"
-echo "  claude mcp add colab-studio -- ssh -T my-server node \"$SCRIPT_DIR/dist/index.js\""
+echo "  claude mcp add -s user colab-studio -- ssh -T my-server \"$node_bin\" \"$SCRIPT_DIR/dist/index.js\""

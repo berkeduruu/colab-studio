@@ -275,11 +275,15 @@ def _stop_done(task):
 async def runtime_stop(request):
     """Kapanış 3 dakikaya kadar sürebilir (ssh çıkışı + `colab stop` + artık runtime'lar); isteği
     bekletmek nginx'in 120 sn zaman aşımına takılıp arayüzde hata gösteriyordu. Kapanış arka planda
-    yürür, istek anında döner, arayüz durumu yoklayarak izler."""
+    yürür, istek anında döner, arayüz durumu yoklayarak izler. Bekleyen ve çalışan işler iptal olur."""
     global _stop_task
     if runtime.state["phase"] not in ("stopping", "off"):
         reason = "elle kapatıldı"
         runtime.begin_stop(reason)  # faz hemen "stopping": yanıt güncel durumu göstersin
+        # Sıradaki işler kalsaydı ilki GPU'yu hemen yeniden açardı: elle kapatma hepsini durdurur.
+        cancelled = studio.cancel_pending()
+        if cancelled:
+            runtime.log(f"GPU elle kapatıldı, {len(cancelled)} bekleyen iş iptal edildi")
         _stop_task = asyncio.create_task(runtime.run_stop(reason))
         _stop_task.add_done_callback(_stop_done)
     return state_response()
@@ -385,6 +389,14 @@ async def job_create(request):
     except ValueError as e:
         bad(str(e))
     return web.json_response(job)
+
+
+async def media_list(request):
+    try:
+        limit = max(1, min(int(request.query.get("limit", 30)), 500))
+    except ValueError:
+        bad("limit bir sayı olmalı")
+    return web.json_response(studio.list_media(limit, request.query.get("ext")))
 
 
 async def job_get(request):
@@ -509,6 +521,7 @@ def create_app():
         web.get("/api/presets", presets_list),
         web.post("/api/presets", preset_create),
         web.delete("/api/presets/{id}", preset_delete),
+        web.get("/api/media", media_list),
         web.static("/media", studio.MEDIA_DIR),
         web.static("/assets", WEB_DIST / "assets"),
         web.get("/", spa),

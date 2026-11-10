@@ -145,6 +145,13 @@ export function registerRuntimeTools(server: McpServer): void {
     async () => {
       try {
         const result = await api.startRuntime();
+        if (result.phase === "error") {
+          // Kurulum eksik (colab CLI ya da Google girişi): stüdyo açılışı hiç başlatmadı.
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Colab GPU runtime cannot start: ${result.detail}` }],
+          };
+        }
         return {
           content: [
             {
@@ -170,7 +177,7 @@ export function registerRuntimeTools(server: McpServer): void {
 
   server.tool(
     "colab_runtime_stop",
-    "Immediately shut down the Colab GPU runtime and close SSH tunnel to save Google Colab compute units. A job running on the GPU (from any client of this studio) is interrupted.",
+    "Shut down the Colab GPU runtime to save Google Colab compute units. Running and queued jobs (from any client of this studio) are cancelled. Returns at once with phase STOPPING; the shutdown finishes in the background (check colab_runtime_status for OFF).",
     {},
     { destructiveHint: true, idempotentHint: true },
     async () => {
@@ -180,7 +187,15 @@ export function registerRuntimeTools(server: McpServer): void {
           content: [
             {
               type: "text",
-              text: `Colab GPU runtime stopped successfully.\nCurrent Phase: ${result.phase}\nDetail: ${result.detail || "Stopped manually"}`,
+              text: [
+                result.phase === "off"
+                  ? "Colab GPU runtime is off."
+                  : result.phase === "stopping"
+                    ? "Colab GPU shutdown in progress; it finishes in the background (usually within a few minutes)."
+                    : `Colab GPU runtime did not stop (phase ${result.phase}).`,
+                `Current Phase: ${result.phase}`,
+                `Detail: ${result.detail || "None"}`,
+              ].join("\n"),
             },
           ],
         };

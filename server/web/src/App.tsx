@@ -94,6 +94,9 @@ export default function App() {
   const modeRef = useRef(mode);
   // İstem geliştirme yoklaması buradan durdurulur (unmount ya da yeni istek).
   const enhanceRun = useRef<{ stopped: boolean } | null>(null);
+  // GPU durumunu yazan her istek (yoklama ya da düğme) bir sıra numarası alır; yalnızca en son
+  // gönderilenin yanıtı yazılır: düğmeden önce giden yoklamanın eski yanıtı yeni fazı ezmez.
+  const rtSeq = useRef(0);
 
   const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 
@@ -204,14 +207,13 @@ export default function App() {
   useEffect(() => {
     let stop = false;
     let busy = false;
-    let generation = 0;
     const tick = async () => {
       if (busy) return;
       busy = true;
-      const mine = ++generation;
+      const mine = ++rtSeq.current;
       try {
         const s = await api.runtime();
-        if (stop || mine !== generation) return;
+        if (stop || mine !== rtSeq.current) return;
         setRt(s);
       } catch {
         // Servis yeniden başlarken görülen geçici hata: son durum korunur, sonraki tick dener.
@@ -283,6 +285,13 @@ export default function App() {
     return () => clearInterval(timer);
   }, [logLines === null]);
 
+  /** Sohbeti yeniden okur; yanıt gelene kadar başka sohbete geçildiyse eski sohbet ekrana yazılmaz
+   * (yoksa son görseli yanlış sohbete referans olarak eklenirdi). */
+  const reloadThread = async (id: string) => {
+    const detail = await api.thread(id);
+    if (activeIdRef.current === id) setThread(detail);
+  };
+
   /** İşi gönderir; sunucu reddettiyse ya da ulaşılamadıysa false döner. */
   const submit = async (kind: Mode, text: string, p: object, inputs: string[]) => {
     let job;
@@ -296,7 +305,7 @@ export default function App() {
       setActiveId(job.thread_id);
       refreshThreads();
     } else if (activeId) {
-      api.thread(activeId).then(setThread).catch(fail);
+      reloadThread(activeId).catch(fail);
     }
     return true;
   };
@@ -382,8 +391,10 @@ export default function App() {
     }
   };
 
-  const runtimeAction = (a: "start" | "stop" | "toggle-auto") =>
-    api.runtimeAction(a).then(setRt).catch(fail);
+  const runtimeAction = (a: "start" | "stop" | "toggle-auto") => {
+    const mine = ++rtSeq.current;
+    return api.runtimeAction(a).then((s) => mine === rtSeq.current && setRt(s)).catch(fail);
+  };
 
   return (
     <div className={`app ${showSettings ? "with-settings" : ""}`}>
@@ -415,7 +426,7 @@ export default function App() {
         <TopBar
           rt={rt}
           onStart={() => runtimeAction("start")}
-          onStop={() => confirm(t("GPU kapatılsın mı? Süren işler yarıda kalır.")) && runtimeAction("stop")}
+          onStop={() => confirm(t("GPU kapatılsın mı? Süren ve sıradaki işler iptal edilir.")) && runtimeAction("stop")}
           onToggleAuto={() => runtimeAction("toggle-auto")}
           onToggleLog={() => (logLines === null ? api.runtimeLog().then((r) => setLogLines(r.lines)).catch(fail) : setLogLines(null))}
           onToggleSettings={() => setShowSettings(!showSettings)}
@@ -466,7 +477,7 @@ export default function App() {
                 setThread((cur) => (cur ? { ...cur, jobs: cur.jobs.map((j) => (j.id === cancelled.id ? cancelled : j)) } : cur));
                 if (!activeId) return;
                 try {
-                  setThread(await api.thread(activeId));
+                  await reloadThread(activeId);
                 } catch (e) {
                   // Tam liste alınamadı: yerelde işaretlenen satır duruyor, sonraki yoklama düzeltir.
                   fail(e);

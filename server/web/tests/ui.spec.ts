@@ -393,6 +393,15 @@ test.describe("davranış", () => {
     api.assertClean();
   });
 
+  test("GPU kapanırken Kapat düğmesi beklemede: ikinci basış onay penceresi açmaz", async ({ page }) => {
+    const api = new MockApi();
+    api.rt = runtimeState({ phase: "stopping", detail: "elle kapatıldı" });
+    await open(page, api);
+    await expect(page.locator(".pill")).toHaveText("Kapanıyor");
+    await expect(page.getByRole("button", { name: "Kapat" }).first()).toBeDisabled();
+    api.assertClean();
+  });
+
   test("sohbet silinir; açık sohbet silinirse boş ekrana dönülür", async ({ page }) => {
     const api = busyApi();
     await open(page, api);
@@ -507,7 +516,8 @@ test("bekleyen iş iptal edilir ve sohbette 'İptal edildi' görünür", async (
   const running = page.locator(".result", { has: page.locator(".status-text", { hasText: /^Üretiliyor/ }) });
   page.once("dialog", (d) => d.accept());
   await running.getByRole("button", { name: "İptal" }).click();
-  await expect(page.locator(".error-text", { hasText: "İptal edildi" })).toBeVisible();
+  await expect(page.locator(".cancelled-text", { hasText: "İptal edildi" })).toBeVisible();
+  await expect(page.locator(".error-text", { hasText: "İptal edildi" })).toHaveCount(0); // iptal bir hata gibi görünmez
   expect(api.requests.some((r) => r.method === "POST" && /\/api\/jobs\/job\d+\/cancel$/.test(r.path))).toBe(true);
   api.assertClean();
 });
@@ -942,7 +952,7 @@ test.describe("dayanıklılık ve erişilebilirlik", () => {
     // Yakalanmayan söz (unhandled rejection) sayfa hatası sayılır; assertClean onu da yakalar.
     await expect(page.locator(".banner.err")).toContainText("Sunucuya şu an ulaşılamıyor (502)");
     await expect(running.getByRole("button", { name: "İptal" })).toBeVisible();
-    await expect(page.locator(".error-text", { hasText: "İptal edildi" })).toHaveCount(0);
+    await expect(page.locator(".cancelled-text", { hasText: "İptal edildi" })).toHaveCount(0);
     api.assertClean();
   });
 
@@ -958,7 +968,7 @@ test.describe("dayanıklılık ve erişilebilirlik", () => {
     await running.getByRole("button", { name: "İptal" }).click();
     await expect(page.locator(".banner.err")).toContainText("Sunucuya şu an ulaşılamıyor (502)");
     // Sunucunun döndürdüğü iptal hâli yerelde yazıldı: satır eski hâlinde kalmadı.
-    await expect(page.locator(".error-text", { hasText: "İptal edildi" })).toBeVisible();
+    await expect(page.locator(".cancelled-text", { hasText: "İptal edildi" })).toBeVisible();
     api.assertClean();
   });
 

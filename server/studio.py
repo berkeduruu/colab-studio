@@ -7,6 +7,7 @@ import asyncio
 import itertools
 import json
 import random
+import shutil
 import sqlite3
 import time
 import uuid
@@ -96,6 +97,18 @@ db = None
 queue = asyncio.PriorityQueue()
 CANCELLED = "İptal edildi"
 cancelled = set()  # iptal istenen çalışan işler; ComfyUI kesilince hata yerine bu yazılır
+
+# İş durum makinesi: bir iş yalnızca bu geçişlerle ilerler; done ve error son durumdur, hiçbir yazım
+# onları geri açamaz (iptal edilen bir iş "running"e dönmez). İptal ayrı bir durum değildir:
+# status="error", error=CANCELLED; istemciler bunu iş kaydındaki "cancelled" alanından okur.
+JOB_TRANSITIONS = {
+    "queued": {"waiting_gpu", "running", "error"},
+    "waiting_gpu": {"running", "error"},  # servis yeniden başlarken init() bunları topluca "queued" yapar
+    "running": {"done", "error"},
+    "done": set(),
+    "error": set(),
+}
+PENDING = ("queued", "waiting_gpu", "running")
 # Çalışan işin canlı durumu (kalan süre, aşamanın süresi, son güncelleme); yalnızca bellekte.
 live = {}
 
@@ -140,6 +153,7 @@ def _job_dict(row):
     d["live"] = state() if state else None
     if d["live"]:
         d["progress"] = d["live"]["progress"]
+    d["cancelled"] = d["status"] == "error" and d["error"] == CANCELLED
     return d
 
 
@@ -287,6 +301,28 @@ def save_upload(data, ext):
     return name
 
 
+def list_media(limit=30, ext=None):
+    """Medya kitaplığı, en yeni önce: kökteki üretim çıktıları ve uploads/ altındaki yüklemeler.
+    MCP gibi istemciler stüdyonun diskine değil buraya bakar (stüdyo Docker'da ya da başka makinede
+    olabilir). Veri dizininin disk kullanımı da döner."""
+    ext = (ext or "").lower().lstrip(".")
+    files = []
+    for folder, prefix, is_output in ((MEDIA_DIR, "", True), (MEDIA_DIR / "uploads", "uploads/", False)):
+        if not folder.is_dir():
+            continue
+        for f in folder.iterdir():
+            if not f.is_file() or (ext and f.suffix.lower().lstrip(".") != ext):
+                continue
+            try:
+                st = f.stat()
+            except FileNotFoundError:  # bu arada silindi
+                continue
+            files.append({"name": prefix + f.name, "size": st.st_size, "mtime": st.st_mtime, "is_output": is_output})
+    files.sort(key=lambda f: f["mtime"], reverse=True)
+    disk = shutil.disk_usage(DATA_DIR)
+    return {"files": files[:limit], "disk": {"total": disk.total, "used": disk.used, "free": disk.free}}
+
+
 # --- işler ---
 
 def create_job(thread_id, mode, kind, prompt, params, inputs):
@@ -311,13 +347,39 @@ def get_job(jid):
 
 
 def _update(jid, **fields):
+    """Durum dışındaki alanları yazar (aşama, ilerleme, çıktılar); durum yalnızca _set_status ile değişir."""
+    assert "status" not in fields, "iş durumu _set_status ile değişir"
     keys = ", ".join(f"{k}=?" for k in fields)
     db.execute(f"UPDATE jobs SET {keys} WHERE id=?", (*fields.values(), jid))
     db.commit()
 
 
+def _set_status(jid, status, **fields):
+    """İşi JOB_TRANSITIONS'a göre `status`'a geçirir. Geçiş izinsizse (iş bu arada iptal edildi, bitti ya
+    da silindi) hiçbir şey yazılmaz ve False döner: son durumdaki bir iş yarışla yeniden açılamaz."""
+    sources = [s for s, targets in JOB_TRANSITIONS.items() if status in targets]
+    keys = ", ".join(f"{k}=?" for k in ("status", *fields))
+    marks = ",".join("?" * len(sources))
+    cur = db.execute(f"UPDATE jobs SET {keys} WHERE id=? AND status IN ({marks})", (status, *fields.values(), jid, *sources))
+    db.commit()
+    return cur.rowcount == 1
+
+
 def has_pending_jobs():
     return db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','waiting_gpu','running') LIMIT 1").fetchone() is not None
+
+
+def cancel_pending():
+    """GPU elle kapatılınca bekleyen tüm işler iptal olur: yoksa sıradaki iş GPU'yu birkaç saniye
+    sonra yeniden açar ve kapatma boşa gider. Çalışan iş ComfyUI'yle birlikte kesilir; bağlantı
+    hatası yerine "İptal edildi" yazılsın diye işaretlenir. İptal edilen işlerin kimliklerini döndürür."""
+    ids = []
+    for r in db.execute("SELECT id, status FROM jobs WHERE status IN ('queued','waiting_gpu','running')").fetchall():
+        cancelled.add(r["id"])
+        if r["status"] != "running":
+            _set_status(r["id"], "error", error=CANCELLED, finished_at=time.time())
+        ids.append(r["id"])
+    return ids
 
 
 MODEL_LABELS = {"image": "Görsel", "enhance": "İstem geliştirme", "video": "Video", "music": "Müzik", "speech": "Ses", "transcribe": "Yazıya dökme", "model3d": "3D"}
@@ -334,7 +396,7 @@ async def cancel_job(jid):
     job = get_job(jid)
     if job["status"] in ("queued", "waiting_gpu"):
         cancelled.add(jid)
-        _update(jid, status="error", error=CANCELLED, finished_at=time.time())
+        _set_status(jid, "error", error=CANCELLED, finished_at=time.time())
     elif job["status"] == "running":
         cancelled.add(jid)
         await interrupt_comfy()
@@ -369,7 +431,7 @@ async def worker():
         except Exception as e:  # işin kendi hataları _work içinde yakalanır; buraya kalan kök neden
             runtime.log(f"iş {jid[:8]}: beklenmedik hata: {runtime.short_error(e, 300)}")
             try:
-                _update(jid, status="error", error=runtime.short_error(e), finished_at=time.time())
+                _set_status(jid, "error", error=runtime.short_error(e), finished_at=time.time())
             except Exception as write_error:
                 runtime.log(f"iş {jid[:8]}: hata durumu yazılamadı: {runtime.short_error(write_error, 200)}")
         finally:
@@ -391,7 +453,7 @@ async def _work(jid):
         return
     try:
         if not runtime.ready.is_set():
-            _update(jid, status="waiting_gpu")
+            _set_status(jid, "waiting_gpu")
             # Önceki bir kapanış sürüyorsa bitmesi beklenir, sonra GPU bir kez açılır.
             started = False
             while not runtime.ready.is_set():
@@ -406,7 +468,10 @@ async def _work(jid):
                     runtime.start(job["kind"] if job["kind"] in runtime.PACKS else None)  # işin modelleri ilk iner; paketsiz tür (yazıya dökme) hiçbirini beklemez
                     started = True
                 await asyncio.sleep(2)
-        _update(jid, status="running")
+        # GPU hazır olduğu anda gelen iptal bekleme döngüsünde görülmeyebilir: geçiş reddedilirse iş
+        # zaten son durumdadır (iptal edildi ya da silindi), çalıştırılmaz.
+        if not _set_status(jid, "running"):
+            return
         runtime.touch()
         if job["kind"] in runtime.PACKS and job["kind"] not in runtime.local_modes:
             def on_wait(st):
@@ -426,10 +491,10 @@ async def _work(jid):
             raise RuntimeError(f"Süre aşımı: iş {JOB_TIMEOUT // 60} dakikada bitmedi, durduruldu") from None
         if jid in cancelled:  # iptal, ComfyUI'ye iş gitmeden (model hazırlığı, yükleme) geldiyse
             raise RuntimeError(CANCELLED)
-        _update(jid, status="done", progress=1.0, finished_at=time.time())
+        _set_status(jid, "done", progress=1.0, finished_at=time.time())
     except Exception as e:
         error = CANCELLED if jid in cancelled else runtime.short_error(e)
-        _update(jid, status="error", error=error, finished_at=time.time())
+        _set_status(jid, "error", error=error, finished_at=time.time())
 
 
 async def _run(job):

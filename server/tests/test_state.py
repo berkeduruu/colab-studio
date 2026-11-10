@@ -12,8 +12,8 @@ async def test_init_recovers_interrupted_jobs(db):
     a = studio.create_job("t", "image", "image", "a", {}, [])
     b = studio.create_job("t", "image", "image", "b", {}, [])
     c = studio.create_job("t", "image", "image", "c", {}, [])
-    studio._update(a["id"], status="running")
-    studio._update(b["id"], status="waiting_gpu")
+    studio._set_status(a["id"], "running")
+    studio._set_status(b["id"], "waiting_gpu")
     while not studio.queue.empty():
         studio.queue.get_nowait()
     studio.db.close()
@@ -29,7 +29,7 @@ async def test_queue_info_current_is_the_active_job(db):
     a = studio.create_job("t", "image", "image", "a", {}, [])
     b = studio.create_job("t", "image", "image", "b", {}, [])
     assert studio.queue_info()["current"] is None
-    studio._update(a["id"], status="running", stage="Üretiliyor", progress=0.5)
+    studio._set_status(a["id"], "running", stage="Üretiliyor", progress=0.5)
     info = studio.queue_info()
     assert info["order"] == [a["id"], b["id"]]
     assert info["current"]["id"] == a["id"] and info["current"]["stage"] == "Üretiliyor"
@@ -149,7 +149,7 @@ async def test_enhance_jumps_ahead_of_queued_jobs(db):
     a = studio.create_job("t", "image", "image", "a", {}, [])
     b = studio.create_job("t", "video", "video", "b", {}, [])
     e = studio.create_job(None, "image", "enhance", "e", {}, [])
-    studio._update(a["id"], status="running")
+    studio._set_status(a["id"], "running")
     assert studio.queue_info()["order"] == [a["id"], e["id"], b["id"]]
     order = [studio.queue.get_nowait()[2] for _ in range(studio.queue.qsize())]
     assert order == [e["id"], a["id"], b["id"]]
@@ -172,6 +172,7 @@ async def test_startup_waits_for_the_pack_of_the_job_that_started_the_gpu(data_d
         pass
 
     monkeypatch.setattr(runtime, "_start", no_start)
+    monkeypatch.setattr(runtime, "preflight", lambda: None)  # testlerde colab CLI yok
     runtime.set_phase("off")
     runtime.start("speech")
     assert runtime.state["startup"]["pack"] == "speech"
@@ -317,7 +318,7 @@ async def test_missing_colab_cli_is_reported_instead_of_starting(db, monkeypatch
     monkeypatch.setattr(runtime, "COLAB", str(tmp_path / "yok"))
     calls = []
     monkeypatch.setattr(runtime, "run", lambda *a, **k: calls.append(a))
-    await runtime._start()
+    runtime.start()
     assert runtime.state["phase"] == "error"
     assert "colab CLI bulunamadı" in runtime.state["detail"] and "install.sh" in runtime.state["detail"]
     assert calls == []

@@ -88,6 +88,10 @@ runs `loginctl enable-linger` for you; if that needs root it prints a warning, a
 `sudo loginctl enable-linger $USER` yourself (important on servers, where closing the SSH session
 would otherwise stop the studio).
 
+`--service` needs a **systemd user session** (a normal Linux login; not a minimal container or WSL1).
+On a machine without one the installer says so, installs everything else anyway, and you start the
+studio with `./run.sh`.
+
 ### Docker
 
 ```bash
@@ -95,7 +99,7 @@ docker compose run --rm studio colab usage          # one-time Google sign-in, s
 docker compose up -d                                # http://127.0.0.1:8190/ (or your STUDIO_PORT)
 ```
 
-The first command builds the image (a few minutes, about 650 MB; a `pull access denied` line before
+The first command builds the image (a few minutes, about 450 MB; a `pull access denied` line before
 the build is normal); later starts reuse it. Chats and media live in
 the `studio-data` volume and the sign-in in the `colab-login` volume.
 
@@ -245,9 +249,9 @@ tells you and leaves the restart to you). Started with `./run.sh`: restart it yo
 `git pull && docker compose up -d --build`.
 
 Without Node.js, `install.sh` downloads the prebuilt UI of the release in `VERSION`. If the code you
-pulled has newer UI changes than that release, it says so (this needs git history: with a `--depth 1`
-clone or a ZIP download it cannot tell, and says that instead); install Node.js 20.19+ or 22.12+ to
-build the matching UI.
+pulled has newer UI changes than that release, it says so; for that it needs the release tag in the
+clone, so a ZIP download (or a clone without that tag, e.g. `--depth 1` of a commit newer than the
+release) cannot tell and says so instead. Install Node.js 20.19+ or 22.12+ to build the matching UI.
 
 ## Uninstalling
 
@@ -271,6 +275,8 @@ uv and the Colab CLI (`uv tool uninstall google-colab-cli`) are left alone. Dock
 | Downloads are slow or fail with 429 | Set `HF_TOKEN` in `.env` and restart. |
 | A job fails after you changed `models.toml` | The new file is probably a different architecture; see [Models](docs/models.md). |
 | "port ... is already in use" | Another Colab Studio (or another program) uses the port. Stop it or set another `STUDIO_PORT`. Docker: change it, then `docker compose up -d --force-recreate`. |
+| `--service` says systemd is not available | This machine has no systemd user session (a minimal container, WSL1). Start the studio with `./run.sh`, or run `./install.sh --service` from a normal login on the host. |
+| Two studios on one machine | Give each `.env` its own `STUDIO_PORT` **and** `STUDIO_DATA`; otherwise the second one stops with "port ... is already in use", and both would share one folder of chats and media. |
 | Anything else | The log button (top right) shows the GPU start log. The studio's own output is in the terminal running `./run.sh`; with `--service`: `journalctl --user -u colab-studio`; Docker: `docker compose logs`. |
 
 The studio only ever releases the Colab session it created (`STUDIO_SESSION`). If it was killed
@@ -283,12 +289,16 @@ studio: start the GPU, generate media, wait for jobs and look at the results. It
 
 ```bash
 ./install.sh --mcp          # installs the studio (if needed), builds the MCP server, prints the command below
-claude mcp add colab-studio -- node "$PWD/mcp/dist/index.js"
+claude mcp add -s user colab-studio -- "$(command -v node)" "$PWD/mcp/dist/index.js"
 ```
 
 There are two `install.sh` files: the one in the repository root installs the **studio**; the one in
 `mcp/` builds only the **MCP server** (`--mcp` runs it for you). See [mcp/README.md](mcp/README.md) for
 remote (SSH) setups and the tool list.
+
+With [Docker](#docker), build it with `mcp/install.sh` (not `./install.sh --mcp`, which installs the studio
+itself) and add it the same way: the MCP server reads everything, media included, through the studio's
+API (`STUDIO_PORT` from `.env`).
 
 ## Privacy and security
 
