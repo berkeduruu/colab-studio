@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "web" / "src"
 EN_TS = (SRC / "en.ts").read_text()
@@ -91,3 +93,33 @@ def test_setup_problems_are_translated(monkeypatch, tmp_path):
     messages.append(runtime.preflight())
     assert all(messages) and len(set(messages)) == 3
     assert [m for m in messages if not _translated(m)] == []
+
+
+# --- sunucu tarafı İngilizce (MCP, curl) ---
+
+def test_server_side_table_matches_the_ui_table():
+    """server/i18n.py en.ts'yi okur: arayüzün bildiği her birebir çeviri ve kalıp sunucuda da bulunmalı."""
+    import i18n
+
+    assert set(i18n.EXACT) == EN_KEYS
+    assert len(i18n.PATTERNS) == len(PATTERNS)
+
+
+def test_to_english_handles_exact_patterns_and_nesting():
+    import i18n
+
+    assert i18n.to_english("Üretiliyor") == "Generating"
+    assert i18n.to_english("geçersiz oran: 5:5") == "invalid aspect ratio: 5:5"
+    assert i18n.to_english("GPU açılamadı: komut başarısız (1): x") == "GPU could not start: command failed (1): x"
+    assert i18n.to_english("ComfyUI'nin ham hatası: bilinmeyen") == "ComfyUI'nin ham hatası: bilinmeyen"  # tanınmayan metin
+    assert i18n.to_english(None) is None
+
+
+@pytest.mark.parametrize("headers,english", [
+    ({}, True), ({"Accept-Language": "en-US,en;q=0.9"}, True), ({"Accept-Language": "tr-TR,tr;q=0.9"}, False),
+    ({"X-Studio-UI": "1"}, False), ({"X-Studio-UI": "1", "Accept-Language": "en"}, False),
+])
+def test_wants_english(headers, english):
+    import i18n
+
+    assert i18n.wants_english(headers) is english

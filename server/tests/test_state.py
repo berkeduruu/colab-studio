@@ -147,6 +147,22 @@ async def test_cleanup_keeps_expired_upload_still_used_by_a_job(db):
     assert used.exists() and not unused.exists()
 
 
+async def test_retention_zero_keeps_everything(db, monkeypatch):
+    """STUDIO_RETENTION_DAYS=0: eski sohbet, iş ve yükleme silinmez; kredi örnekleri yine budanır."""
+    old = time.time() - 400 * 86400
+    thread = studio.create_thread("image", "çok eski")
+    studio.create_job(thread["id"], "image", "image", "a", {"seed": 1}, [])
+    upload = studio.MEDIA_DIR / "uploads" / "eski.png"
+    upload.write_bytes(b"png")
+    os.utime(upload, (old, old))
+    studio.db.execute("UPDATE threads SET created_at=?", (old,))
+    studio.db.execute("UPDATE jobs SET created_at=?, status='done', finished_at=?", (old, old))
+    studio.db.commit()
+    monkeypatch.setattr(studio, "RETENTION_DAYS", 0)
+    studio.cleanup_once()
+    assert studio.get_thread(thread["id"]) is not None and upload.exists()
+
+
 async def test_deleted_thread_text_does_not_survive_in_database_file(db):
     """DELETE satırı kaldırır; dosyada kalan sayfa artığından istem/başlık okunamamalı."""
     thread = studio.create_thread("image", "gizli baslik 5591")

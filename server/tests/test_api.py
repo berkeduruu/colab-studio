@@ -15,6 +15,9 @@ SPEECH = {"engine": "chatterbox", "language": "Turkish", "voice_preset": "Vivian
           "exaggeration": 0.5, "cfg_weight": 0.5, "temperature": 0.8, "seed": None}
 
 
+UI = {"X-Studio-UI": "1"}  # arayüz isteği: sunucu metinleri İngilizceye çevirmez
+
+
 async def create(client, **body):
     body = {"thread_id": None, "prompt": "test", "inputs": [], **body}
     return await client.post("/api/jobs", json=body)
@@ -328,9 +331,9 @@ async def test_spa_routes_serve_index(client):
 
 async def test_cancel_endpoint(client):
     job = await (await create(client, kind="image", params=IMAGE)).json()
-    r = await client.post(f"/api/jobs/{job['id']}/cancel")
+    r = await client.post(f"/api/jobs/{job['id']}/cancel", headers=UI)
     assert r.status == 200
-    assert (await r.json())["error"] == studio.CANCELLED
+    assert (await r.json())["error"] == studio.CANCELLED  # arayüz Türkçe kaynak metni alır ve kendi çevirir
     assert studio.queue_info()["order"] == []
     assert (await client.post("/api/jobs/yok/cancel")).status == 404
 
@@ -370,6 +373,18 @@ async def test_same_origin_and_non_browser_writes_pass_and_reads_are_never_block
     # Okuma istekleri (GET) başka siteden de yanıtlanır; kural yalnızca yazma isteklerine uygulanır.
     r = await client.get("/api/settings", headers={"Origin": "https://kotu-site.example", "Sec-Fetch-Site": "cross-site"})
     assert r.status == 200
+
+
+async def test_reverse_proxy_that_rewrites_host_is_accepted_with_x_forwarded_host(client):
+    """Vekil Host'u iç adrese çevirirse tarayıcının Origin'i uymaz; vekilin X-Forwarded-Host'u kabul edilir.
+    Başlık yoksa ya da başka bir siteyi gösteriyorsa istek reddedilir ve mesaj çözümü söyler."""
+    origin = {"Origin": "https://studio.example.com"}
+    ok = await client.put("/api/settings/mode", headers={**origin, "X-Forwarded-Host": "studio.example.com"}, json="image")
+    assert ok.status == 200
+    for extra in ({}, {"X-Forwarded-Host": "kotu-site.example"}):
+        r = await client.put("/api/settings/mode", headers={**origin, **extra}, json="image")
+        assert r.status == 403
+        assert "proxy_set_header Host" in await r.text()
 
 
 @pytest.mark.parametrize("host", ["kotu-site.example", "kotu-site.example:8190", "127.0.0.1.kotu-site.example", "localhost.kotu-site.example"])
@@ -448,7 +463,7 @@ async def test_manual_gpu_stop_cancels_pending_jobs(client, monkeypatch):
         r = await client.post("/api/runtime/stop")
         assert r.status == 200 and (await r.json())["queue"]["order"] == [running["id"]]
         for jid in (queued["id"], waiting["id"]):
-            job = await (await client.get(f"/api/jobs/{jid}")).json()
+            job = await (await client.get(f"/api/jobs/{jid}", headers=UI)).json()
             assert job["status"] == "error" and job["cancelled"] and job["error"] == studio.CANCELLED
         assert studio.get_job(running["id"])["status"] == "running" and running["id"] in studio.cancelled
     finally:
@@ -474,3 +489,25 @@ async def test_media_list_shows_outputs_and_uploads_newest_first(client, upload)
     only_mp4 = await (await client.get("/api/media?ext=mp4&limit=5")).json()
     assert [f["name"] for f in only_mp4["files"]] == ["old_0.mp4"]
     assert (await client.get("/api/media?limit=x")).status == 400
+
+
+async def test_error_messages_are_english_for_other_clients_and_turkish_for_the_ui(client):
+    """MCP/curl İngilizce alır; arayüz (X-Studio-UI) Türkçeyi alıp kendi çevirir; Accept-Language: tr Türkçe ister."""
+    body = {"kind": "image", "prompt": "x", "params": {"ratio": "5:5"}}
+    other = await client.post("/api/jobs", json=body)
+    assert other.status == 400 and await other.text() == "invalid aspect ratio: 5:5"
+    ui = await client.post("/api/jobs", json=body, headers={"X-Studio-UI": "1", "Accept-Language": "en"})
+    assert await ui.text() == "geçersiz oran: 5:5"
+    tr = await client.post("/api/jobs", json=body, headers={"Accept-Language": "tr-TR,tr;q=0.9"})
+    assert await tr.text() == "geçersiz oran: 5:5"
+
+
+async def test_json_status_fields_are_english_for_other_clients(client, data_dir):
+    job = await (await create(client, kind="image")).json()
+    studio.db.execute("UPDATE jobs SET status='error', error=?, stage=? WHERE id=?", ("GPU açılamadı: zaman aşımı (5s): x", "Üretiliyor", job["id"]))
+    studio.db.commit()
+    other = await (await client.get(f"/api/jobs/{job['id']}")).json()
+    assert other["error"] == "GPU could not start: timed out (5s): x" and other["stage"] == "Generating"
+    assert other["prompt"] == job["prompt"]  # kullanıcının metnine dokunulmaz
+    ui = await (await client.get(f"/api/jobs/{job['id']}", headers={"X-Studio-UI": "1"})).json()
+    assert ui["error"] == "GPU açılamadı: zaman aşımı (5s): x"

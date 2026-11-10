@@ -1,7 +1,7 @@
 """Stüdyo: sohbetler, işler ve medya.
 
 İşler sırayla çalışır. GPU kapalıysa ilk iş runtime'ı açar ve hazır olmasını bekler. Sonuçlar
-sunucuya indirilir (GPU kapanınca runtime'daki kopyalar silinir). 30 günden eski sohbetler silinir.
+sunucuya indirilir (GPU kapanınca runtime'daki kopyalar silinir). Kullanılmayan sohbetler (varsayılan 30 gün, STUDIO_RETENTION_DAYS) silinir.
 """
 import asyncio
 import itertools
@@ -23,7 +23,7 @@ import workflows
 DATA_DIR = config.DATA_DIR
 MEDIA_DIR = DATA_DIR / "media"
 DB_PATH = DATA_DIR / "studio.db"
-RETENTION_DAYS = 30
+RETENTION_DAYS = config.RETENTION_DAYS  # 0: hiçbir şey kendiliğinden silinmez
 CLEANUP_SECONDS = 6 * 3600
 JOB_TIMEOUT = 1800
 CLIENT_ID = "colab-studio"
@@ -687,18 +687,20 @@ def sweep_orphans():
 def cleanup_once():
     """Saklama süresi dolan sohbetleri, eski iş satırlarını, kredi örneklerini, eskimiş süre
     anahtarlarını ve sahipsiz medyayı siler."""
-    cutoff = time.time() - RETENTION_DAYS * 86400
+    # RETENTION_DAYS=0: sohbetler, işler ve yüklemeler hiç silinmez; kredi örnekleri ve sahipsiz medya yine temizlenir.
+    cutoff = time.time() - RETENTION_DAYS * 86400 if RETENTION_DAYS else None
     # Süre sohbetin son kullanımından sayılır (son işinin açılışı ya da bitişi), açılışından değil:
     # 31 gün önce açılıp dün kullanılan sohbet silinmemeli. Bekleyen işi olan sohbete dokunulmaz.
-    stale = db.execute(
-        "SELECT t.id FROM threads t WHERE MAX(t.created_at, COALESCE((SELECT MAX(MAX(j.created_at, "
-        "COALESCE(j.finished_at, 0))) FROM jobs j WHERE j.thread_id = t.id), 0)) < ? AND NOT EXISTS "
-        f"(SELECT 1 FROM jobs j WHERE j.thread_id = t.id AND j.status IN ({','.join('?' * len(PENDING))}))",
-        (cutoff, *PENDING),
-    ).fetchall()
-    for t in stale:
-        delete_thread(t["id"])
-    db.execute("DELETE FROM jobs WHERE thread_id IS NULL AND created_at < ?", (cutoff,))
+    if cutoff is not None:
+        stale = db.execute(
+            "SELECT t.id FROM threads t WHERE MAX(t.created_at, COALESCE((SELECT MAX(MAX(j.created_at, "
+            "COALESCE(j.finished_at, 0))) FROM jobs j WHERE j.thread_id = t.id), 0)) < ? AND NOT EXISTS "
+            f"(SELECT 1 FROM jobs j WHERE j.thread_id = t.id AND j.status IN ({','.join('?' * len(PENDING))}))",
+            (cutoff, *PENDING),
+        ).fetchall()
+        for t in stale:
+            delete_thread(t["id"])
+        db.execute("DELETE FROM jobs WHERE thread_id IS NULL AND created_at < ?", (cutoff,))
     db.execute("DELETE FROM credit_samples WHERE ts < ?", (time.time() - 90 * 86400,))
     db.commit()
     prune_timings()
@@ -708,7 +710,7 @@ def cleanup_once():
     for row in db.execute("SELECT inputs FROM jobs"):
         used.update(json.loads(row["inputs"]))
     for f in (MEDIA_DIR / "uploads").iterdir():
-        if f.stat().st_mtime < cutoff and f"uploads/{f.name}" not in used:
+        if cutoff is not None and f.stat().st_mtime < cutoff and f"uploads/{f.name}" not in used:
             f.unlink()
 
 

@@ -202,7 +202,8 @@ async function send(method: string, path: string, body?: unknown, form?: FormDat
   try {
     return await fetch(path, {
       method,
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      // X-Studio-UI: arayüz sunucu metinlerini kendi dil seçimine göre çevirir; sunucu İngilizceye çevirmesin.
+      headers: body === undefined ? { "X-Studio-UI": "1" } : { "X-Studio-UI": "1", "Content-Type": "application/json" },
       body: form ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch (e) {

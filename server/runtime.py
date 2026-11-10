@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import re
+import shlex
 import shutil
 import time
 from collections import deque
@@ -46,11 +47,22 @@ MODEL_POLL_SECONDS = 3
 MODEL_STALL_SECONDS = 600
 
 
+def _ssh_token_safe(text):
+    """ssh_config genişletir "%x" dizilerini (%h, %p, ...) ProxyCommand ve IdentityFile değerlerinde: yolda
+    kalan "%" çift yazılır."""
+    return str(text).replace("%", "%%")
+
+
 def ssh_conf_text():
+    # Yollar boşluk içerebilir (ör. "~/My Projects/colab-studio"): ProxyCommand satırın geri kalanını kabuğa
+    # verir (kabuk tırnağı), IdentityFile ise ssh'ın kendi çift tırnağını ister.
+    proxy = " ".join(shlex.quote(_ssh_token_safe(x)) for x in (
+        "sh", Path(__file__).parent / "colab_proxy.sh", SESSION, COLAB_SESSIONS, COLAB, SSH_KEY))
+    identity = _ssh_token_safe(SSH_KEY).replace("\\", "\\\\").replace('"', '\\"')
     return f"""Host colab
-  ProxyCommand sh {Path(__file__).parent / "colab_proxy.sh"} {SESSION} {COLAB_SESSIONS} {COLAB} {SSH_KEY}
+  ProxyCommand {proxy}
   User root
-  IdentityFile {SSH_KEY}
+  IdentityFile "{identity}"
   IdentitiesOnly yes
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
@@ -259,7 +271,7 @@ async def _start():
                       timeout=30, stdin_data=config.HF_TOKEN.encode())
         else:
             log("HF_TOKEN yok: modeller girişsiz iner (Hugging Face hız sınırına takılabilir)")
-        await run(f"tar -C '{REPO_DIR}' -cz --exclude=__pycache__ station | ssh -F '{SSH_CONF}' colab 'tar -C /content -xz'", timeout=120, shell=True)
+        await run(f"tar -C {shlex.quote(str(REPO_DIR))} -cz --exclude=__pycache__ station | ssh -F {shlex.quote(str(SSH_CONF))} colab 'tar -C /content -xz'", timeout=120, shell=True)
         # Model kataloğu (models.toml): station/models.py ve iş akışları aynı dosyayı kullanır.
         await run(*SSH, "colab", "install -D -m 644 /dev/stdin /content/station/models.toml",
                   timeout=30, stdin_data=config.MODELS_FILE.read_bytes())

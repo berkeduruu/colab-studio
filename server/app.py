@@ -2,6 +2,7 @@
 import asyncio
 import errno
 import ipaddress
+import json
 import math
 import os
 import socket
@@ -12,6 +13,7 @@ from urllib.parse import urlsplit
 from aiohttp import web
 
 import config
+import i18n
 import runtime
 import studio
 import workflows
@@ -239,11 +241,38 @@ async def csrf_guard(request, handler):
     if request.method in ("POST", "PUT", "DELETE") and request.path.startswith("/api/"):
         site = request.headers.get("Sec-Fetch-Site")
         origin = request.headers.get("Origin")
+        # Kendi ters vekilin (reverse proxy) Host başlığını iç adresle değiştiriyorsa tarayıcının Origin'i ona
+        # uymaz: vekilin eklediği X-Forwarded-Host da kabul edilir. Tarayıcı başka bir siteden bu başlığı
+        # (CORS ön kontrolü olmadan) ekleyemez, bu yüzden CSRF korumasını zayıflatmaz.
+        forwarded = request.headers.get("X-Forwarded-Host", "").split(",")[0].strip()
+        origin_host = urlsplit(origin).netloc if origin is not None else None
         if (site is not None and site not in ("same-origin", "none")) or (
-            origin is not None and urlsplit(origin).netloc != request.host
+            origin_host is not None and origin_host != request.host and origin_host != forwarded
         ):
-            raise web.HTTPForbidden(text="başka bir siteden gelen istek reddedildi")
+            raise web.HTTPForbidden(text=(
+                "başka bir siteden gelen istek reddedildi"
+                + (f" (Origin '{origin_host}', Host '{request.host}': kendi ters vekilin varsa Host başlığını "
+                   "olduğu gibi ilet, örn. nginx'te 'proxy_set_header Host $host;')" if origin_host is not None
+                   and origin_host != request.host else "")
+            ))
     return await handler(request)
+
+
+@web.middleware
+async def english_for_other_clients(request, handler):
+    """Arayüz dışındaki istemciler (MCP, curl) için yanıttaki Türkçe durum ve hata metinlerini İngilizceye
+    çevirir (server/i18n.py). Arayüz kendi dil seçimine göre çevirdiği için ona dokunulmaz."""
+    if not request.path.startswith("/api/") or not i18n.wants_english(request.headers):
+        return await handler(request)
+    try:
+        response = await handler(request)
+    except web.HTTPException as e:
+        if e.text:
+            e.text = i18n.to_english(e.text)
+        raise
+    if response.content_type == "application/json" and isinstance(response, web.Response) and response.body:
+        response.text = json.dumps(i18n.translate_json(json.loads(response.text)), ensure_ascii=False)
+    return response
 
 
 # --- runtime ---
@@ -507,7 +536,7 @@ async def on_shutdown(app):
 
 def create_app():
     studio.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    app = web.Application(client_max_size=50 * 1024 * 1024, middlewares=[host_guard, csrf_guard])
+    app = web.Application(client_max_size=50 * 1024 * 1024, middlewares=[host_guard, csrf_guard, english_for_other_clients])
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
     app.add_routes([

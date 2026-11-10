@@ -5,6 +5,8 @@
 export const SERVER_PATTERNS: [string, string][] = [
   // doğrulama (server/app.py)
   ["bilinmeyen ayar: {x}", "unknown setting: {x}"],
+  ["başka bir siteden gelen istek reddedildi (Origin '{o}', Host '{h}': kendi ters vekilin varsa Host başlığını olduğu gibi ilet, örn. nginx'te 'proxy_set_header Host $host;')",
+    "request from another site was rejected (Origin '{o}', Host '{h}': if you run your own reverse proxy, pass the Host header through unchanged, e.g. 'proxy_set_header Host $host;' in nginx)"],
   ["{x} bir nesne olmalı", "{x} must be an object"],
   ["bilinmeyen hazır ses: {x}", "unknown preset voice: {x}"],
   ["bilinmeyen iş türü: {x}", "unknown job type: {x}"],
