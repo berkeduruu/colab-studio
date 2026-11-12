@@ -66,6 +66,29 @@ async def test_service_starts_with_corrupt_owned_file(colab, db, monkeypatch):
             task.cancel()
 
 
+async def test_failed_startup_cleanup_is_marked_for_retry(colab, db, monkeypatch):
+    async def broken():
+        raise RuntimeError("GPU kapatılamadı, yeniden denenecek: ağ yok")
+
+    monkeypatch.setattr(runtime, "stop_runtime", broken)
+    monkeypatch.setattr(runtime, "startup_cleanup_failed", False)
+    application = app_module.create_app()
+    await app_module.on_startup(application)
+    try:
+        assert runtime.state["phase"] == "error" and runtime.startup_cleanup_failed
+        monkeypatch.setattr(runtime, "run", broken_run)
+        runtime.start("none")  # kullanıcı yine de başlattı: eski temizlik hatası artık geçersiz
+        assert not runtime.startup_cleanup_failed
+        await runtime._start_task
+    finally:
+        for task in application["tasks"]:
+            task.cancel()
+
+
+async def broken_run(*cmd, **kw):
+    raise RuntimeError("colab new başarısız")
+
+
 async def test_unexpected_stop_error_never_leaves_phase_stopping(colab, monkeypatch):
     async def broken():
         raise ValueError("beklenmedik")
