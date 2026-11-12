@@ -143,6 +143,8 @@ local_modes = set()
 warm = set()
 warming = False
 _has_pending = lambda: False
+# Servis açılışındaki temizlik (sahipsiz runtime'ı bırakma) başarısız olduysa True: watchdog yeniden dener.
+startup_cleanup_failed = False
 # İnen model paketlerinin ilerlemesi (station/models.py'nin progress.json'u): paket -> {total, done}
 packs = {}
 # (zaman, toplam inen bayt): ilk ve son ölçüm. Hız indirmenin başından beri ortalama: xet dosyayı
@@ -334,8 +336,9 @@ def start(pack="image"):
     """Runtime'ı arka planda açar; zaten açılıyorsa ya da açıksa bir şey yapmaz. pack: açılışı
     tetikleyen işin model paketi; ilk o iner ve hazır sayılmak için yalnızca o beklenir. None: işin
     indirilecek paketi yok (yazıya dökme; Whisper'ı eklenti kendisi indirir), hiçbir paket beklenmez."""
-    global _start_task
+    global _start_task, startup_cleanup_failed
     if state["phase"] in ("off", "error"):
+        startup_cleanup_failed = False  # açılış kendi runtime'ını kurar; eski hata artık geçersiz
         # Kurulum eksikse (colab CLI ya da Google girişi yok) hata hemen döner: başlatan istek (arayüz,
         # MCP) "açılıyor" yerine ne yapılacağını görür.
         problem = preflight()
@@ -650,6 +653,25 @@ async def stop(reason):
     await run_stop(reason)
 
 
+async def retry_startup_cleanup():
+    """Servis ağ gelmeden açıldıysa (bilgisayar yeni açıldı, DNS henüz yok) açılıştaki temizlik
+    başarısız olur ve arayüz kalıcı bir hata gösterir. Colab'a yeniden ulaşılınca temizlik tamamlanır
+    ve hata kalkar. Ulaşılamıyorsa faz ve hata metni olduğu gibi kalır (her turda titremesin)."""
+    global startup_cleanup_failed
+    await run(COLAB, "sessions", timeout=60, quiet=True)  # ulaşılamıyorsa RuntimeError: sonraki tur
+    if not startup_cleanup_failed or state["phase"] != "error":
+        return  # beklerken bir açılış başladı: onun oturumuna dokunulmaz
+    # "stopping" fazı temizlik sürerken yeni bir açılışı bekletir (start yalnızca off/error'da başlar).
+    set_phase("stopping", "")
+    try:
+        await stop_runtime()
+    except Exception as e:
+        set_phase("error", short_error(e))
+        return
+    startup_cleanup_failed = False
+    set_phase("off", "")
+
+
 def touch():
     """Stüdyo bir iş gönderdiğinde boşta sayacını sıfırlar."""
     if state["phase"] == "ready":
@@ -702,6 +724,8 @@ async def _watch_once(http, has_pending_jobs, on_credits):
             on_credits(state["credits"])
         except RuntimeError as e:
             state["credits"] = {"error": str(e)[:200]}
+    if startup_cleanup_failed and state["phase"] == "error":
+        await retry_startup_cleanup()
     if state["phase"] in ("off", "error"):
         await reap_owned()
     if state["phase"] != "ready":
