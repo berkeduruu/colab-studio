@@ -195,3 +195,50 @@ async def test_manual_stop_during_queue_read_does_not_start_second_shutdown(watc
     await asyncio.sleep(0.3)
     assert not watch["stops"]
     assert runtime.state["phase"] == "stopping" and runtime.state["detail"] == "elle kapatıldı"
+
+
+async def test_failed_startup_cleanup_is_retried_until_colab_is_reachable(watch, monkeypatch):
+    """Bilgisayar açılırken ağ yoktu: açılıştaki temizlik başarısız oldu ve arayüz hata gösteriyor. Colab'a
+    ulaşılamadıkça hata olduğu gibi kalır; ulaşılınca temizlik tamamlanır ve hata kendiliğinden kalkar."""
+    online = {"value": False}
+    real_run = runtime.run
+
+    async def run(*cmd, **kw):
+        if cmd[0] == runtime.COLAB and cmd[1] == "sessions" and not online["value"]:
+            raise RuntimeError("komut başarısız (1): colab sessions")
+        return await real_run(*cmd, **kw)
+
+    monkeypatch.setattr(runtime, "run", run)
+    monkeypatch.setattr(runtime, "startup_cleanup_failed", True)
+    runtime.set_phase("error", "GPU kapatılamadı, yeniden denenecek: ağ yok")
+    await asyncio.sleep(0.3)
+    assert runtime.state["phase"] == "error" and "ağ yok" in runtime.state["detail"]
+    assert not watch["stops"]
+    online["value"] = True
+    await asyncio.sleep(0.3)
+    assert runtime.state["phase"] == "off" and runtime.state["detail"] == ""
+    assert len(watch["stops"]) == 1 and not runtime.startup_cleanup_failed
+
+
+async def test_startup_cleanup_retry_leaves_a_new_start_alone(watch, monkeypatch):
+    """Yeniden deneme Colab'ı yoklarken kullanıcı GPU'yu başlattı: yeni açılışın oturumu kapatılmaz."""
+    real_run = runtime.run
+
+    async def run(*cmd, **kw):
+        if cmd[0] == runtime.COLAB and cmd[1] == "sessions":
+            runtime.set_phase("starting", "GPU ayrılıyor")  # yoklama sürerken açılış başladı
+        return await real_run(*cmd, **kw)
+
+    monkeypatch.setattr(runtime, "run", run)
+    monkeypatch.setattr(runtime, "startup_cleanup_failed", True)
+    runtime.set_phase("error", "GPU kapatılamadı, yeniden denenecek: ağ yok")
+    await asyncio.sleep(0.3)
+    assert runtime.state["phase"] == "starting" and not watch["stops"]
+
+
+async def test_other_errors_are_not_cleared_by_the_watchdog(watch):
+    """Yalnızca açılış temizliğinin hatası kendiliğinden kalkar; başka bir hata (ör. açılış başarısız)
+    kullanıcı görene kadar kalır."""
+    runtime.set_phase("error", "açılış başarısız")
+    await asyncio.sleep(0.3)
+    assert runtime.state["phase"] == "error" and not watch["stops"]

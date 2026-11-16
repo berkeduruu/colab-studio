@@ -509,11 +509,13 @@ async def on_startup(app):
         runtime.set_phase("error", problem)
     else:
         # Servis yeniden başladıysa sahipsiz kalan runtime kredi harcamasın. Bırakılamazsa servis yine
-        # açılır; watchdog stüdyonun açtığı runtime'ı yeniden dener.
+        # açılır; watchdog temizliği yeniden dener ve başarınca hatayı kaldırır (ör. bilgisayar açılırken
+        # ağ henüz yoktu).
         try:
             await runtime.stop_runtime()
         except Exception as e:  # servis ne olursa olsun açılsın
             runtime.set_phase("error", runtime.short_error(e))
+            runtime.startup_cleanup_failed = True
     app["tasks"] = [
         asyncio.create_task(runtime.watchdog(studio.has_pending_jobs, studio.record_credits)),
         asyncio.create_task(runtime.metrics_loop()),
