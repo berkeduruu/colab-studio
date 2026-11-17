@@ -79,11 +79,15 @@ def test_registry_respects_the_session_limit(tmp_path):
         reg.reserve()
 
 
-def test_registry_refuses_a_busy_port(tmp_path):
+def test_registry_refuses_a_busy_port(tmp_path, monkeypatch):
     """A port held by another process must not be tunnelled: the assignment is refused."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as busy:
-        busy.bind(("127.0.0.1", sessions.PORT_BASE))
+        busy.bind(("127.0.0.1", 0))
         busy.listen(1)
+        # Sabit bir port kullanmak testi makinenin o anki durumuna bağlar (canlıda 8200/8199 açıksa
+        # düşer): boş bir portu kendimiz tutup slot 1'i oraya eşliyoruz.
+        monkeypatch.setattr(sessions, "PORT_BASE", busy.getsockname()[1])
+        assert sessions.slot_port(1) == busy.getsockname()[1]
         reg = sessions.Registry(tmp_path / "sessions.json")
         with pytest.raises(sessions.PortBusy, match="in use"):
             reg.reserve(1)
