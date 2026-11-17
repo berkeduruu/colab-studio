@@ -3,6 +3,17 @@
 
 /** Sunucu mesajı kalıpları (server/*.py, station/runtime_setup.sh): {ad} herhangi bir metni yakalar. */
 export const SERVER_PATTERNS: [string, string][] = [
+  // çoklu oturum (server/sessions.py, server/studio.py): "parallel 1-5 arası olmalı" aşağıdaki genel
+  // "{label} {lo}-{hi} arası olmalı" kalıbından önce gelir ki etiketi çevrilsin.
+  ["eşzamanlı oturum sınırı dolu (plan {plan}): planı yükselt ya da bir oturumu kapat",
+    "concurrent session limit reached (plan {plan}): raise the plan or close a session"],
+  ["oturum bulunamadı: {name}", "session not found: {name}"],
+  ["bilinmeyen model paketi: {name}", "unknown model pack: {name}"],
+  ["count 1-{max} arası olmalı", "count must be between 1 and {max}"],
+  ["parallel 1-{max} arası olmalı", "parallel must be between 1 and {max}"],
+  ["belirli bir oturum seçildiyse parallel 1 olmalı", "parallel must be 1 when a session is pinned"],
+  ["packs model paketi adlarından oluşan boş olmayan bir liste olmalı",
+    "packs must be a non-empty list of model pack names"],
   // doğrulama (server/app.py)
   ["bilinmeyen ayar: {x}", "unknown setting: {x}"],
   ["başka bir siteden gelen istek reddedildi (Origin '{o}', Host '{h}': kendi ters vekilin varsa Host başlığını olduğu gibi ilet, örn. nginx'te 'proxy_set_header Host $host;')",
@@ -443,4 +454,30 @@ export const EN: Record<string, string> = {
   "Bu iş iptal edilsin mi?": "Cancel this job?",
   "Şarkı sözleri (boş bırakılırsa enstrümantal)": "Lyrics (leave empty for an instrumental)",
   "Kayıt yok.": "No log lines.",
+  // --- çoklu oturum: şerit ve "kaç oturum?" sorusu ---
+  "Colab oturumları": "Colab sessions",
+  "Oturumlar": "Sessions",
+  "Oturum aç": "Open session",
+  "Plan: {plan}/{max}": "Plan: {plan}/{max}",
+  "Plan dolu ({plan}); planı yükselt": "Plan is full ({plan}); raise the plan",
+  "Yeni Colab oturumu aç (kredi harcar)": "Open a new Colab session (burns credits)",
+  "{name} oturumunu kapat": "Close the {name} session",
+  "port {port} · {minutes}": "port {port} · {minutes}",
+  "kapalı": "off",
+  "açılıyor": "starting",
+  "kapanıyor": "stopping",
+  "hata": "error",
+  "Kaç Colab oturumu kullanılsın?": "How many Colab sessions?",
+  "Aynı anda kaç GPU oturumunun açık tutulacağını belirler. En fazla {max}, önerilen {default}. Sonradan plan düğmesinden değiştirilebilir.":
+    "Sets how many GPU sessions may stay open at once. At most {max}, recommended {default}. You can change it later from the Plan button.",
+  "Her oturum ayrı bir Colab GPU oturumu: aynı anda iki video, ya da bir video + bir görsel + bir seslendirme üretilebilir.":
+    "Each session is its own Colab GPU runtime: two videos, or a video plus an image plus a speech job can run at the same time.",
+  "Oturum başına tek iş paralel çalışır; farklı oturumlar birbirini beklemez.":
+    "One job per session runs at a time; different sessions do not wait for each other.",
+  "Her açık oturum kredi harcar; boşta kalanlar otomatik kapanır (keep-warm seçilirse kapanmaz).":
+    "Every open session burns credits; idle ones shut down automatically (unless keep-warm is on).",
+  "Oturum sayısı": "Number of sessions",
+  "(önerilen)": "(recommended)",
+  "Oturumlar boşta kapanmasın": "Keep sessions running when idle",
+  "Şimdi değil": "Not now",
 };

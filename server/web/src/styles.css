@@ -106,6 +106,16 @@ a { color: var(--accent-text); }
 .pill.error { background: var(--err-soft); color: var(--err); }
 .stat { color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 5px; }
 
+/* çoklu oturum şeridi: her oturum ayrı bir GPU runtime'ı ve kredi demek */
+.sessions-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.sessions-bar .stat { font-size: 12px; }
+.session-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: default; }
+.session-chip.off { opacity: .6; }
+.session-chip.ready { border-color: var(--ok); color: var(--ok); }
+.session-chip.busy { border-color: var(--warn); color: var(--warn); }
+.session-chip.error { border-color: var(--err); color: var(--err); }
+.session-chip .icon-btn { padding: 2px; }
+
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line-strong); background: transparent; cursor: pointer; font-size: 13px; }
 .btn:hover { background: var(--card); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -202,6 +212,18 @@ select.chip { appearance: none; padding-right: 8px; }
 .lightbox { position: fixed; inset: 0; background: rgba(0, 0, 0, .88); display: flex; align-items: center; justify-content: center; z-index: 50; cursor: zoom-out; padding: 24px; }
 .lightbox:focus { outline: none; }
 .lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; }
+
+/* "Kaç oturum?" sorusu: plan penceresi */
+.overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .62); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px; }
+.dialog { background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; padding: 18px; width: min(560px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.dialog:focus { outline: none; }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; }
+.dialog-head h2 { margin: 0; font-size: 16px; }
+.dialog .muted { margin: 0; font-size: 13px; line-height: 1.5; }
+.plan-info { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.plan-choices { display: flex; gap: 8px; flex-wrap: wrap; }
+.plan-warm { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 .log { position: fixed; right: 16px; bottom: 16px; width: min(560px, calc(100% - 32px)); max-height: 50vh; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; display: flex; flex-direction: column; z-index: 40; }
 .log header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); }

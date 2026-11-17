@@ -48,9 +48,13 @@ nvm or fnm, so a bare `node` is often not found there.
 
 ## Tools
 
+34 tools in total (with `MCP_ADMIN_TOOLS=1`); 30 without the admin tools.
+
 - **GPU:** `colab_runtime_status`, `colab_runtime_start`, `colab_runtime_stop`, `colab_runtime_toggle_auto`,
   `colab_runtime_metrics`, `colab_runtime_logs`. A job starts the GPU by itself and downloads that job's
   models first, so the status and start tools are not needed before generating.
+- **Sessions:** `colab_sessions` (read-only list: name, slot, phase, port, uptime, model packs, limits),
+  `colab_sessions_start`, `colab_sessions_stop`, `colab_sessions_plan`
 - **Generation:** `generate_image`, `enhance_prompt`, `generate_video`, `generate_music`, `generate_speech`,
   `transcribe_audio`, `generate_3d`
 - **Jobs:** `get_job`, `wait_for_job`, `cancel_job`
@@ -66,6 +70,22 @@ Job states are the studio's own: `queued`, `waiting_gpu`, `running`, `done`, `er
 `error` are final; a job never leaves them. A cancelled job ends as `error` with `cancelled: true`
 (the tools report it as cancelled). Stopping the GPU by hand (`colab_runtime_stop`) cancels running
 and queued jobs, so the queue does not start the GPU again a few seconds later.
+
+### Several Colab sessions
+
+The studio can run up to `STUDIO_SESSIONS_MAX` (5 by default) Colab runtimes at the same time, so two
+videos — or a video plus an image plus a speech job — render concurrently. Each session has its own
+port, model packs and queue slot, and the router picks one when a job starts (packs already on disk →
+model already in VRAM → least loaded → lowest slot).
+
+- `colab_sessions` lists them (name, slot, phase, port, uptime, packs) with the limits; it is read-only.
+- `colab_sessions_start` opens more (`count`, `profile`), `colab_sessions_stop` closes one (`name`) or
+  all of them (`all`), and `colab_sessions_plan` reads or changes the plan (`plan`, `keep_warm`).
+  Opening a session burns credits, so nothing opens one implicitly; a full plan is refused with 409.
+- `generate_image` and `generate_video` take `session` (pin the job to one session; omit to let the
+  router choose) and `parallel` (1-5: submit the same job to N sessions at once). `parallel > 1`
+  returns one summary listing every job and the session it landed on; a single job keeps the usual
+  response and is polled with `wait_for_job` / `get_job`.
 
 ### Waiting for results
 

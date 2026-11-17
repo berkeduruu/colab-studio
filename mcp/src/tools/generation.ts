@@ -190,6 +190,8 @@ export function registerGenerationTools(server: McpServer): void {
       turbo: z.boolean().default(false).describe("Turbo lightning mode for faster inference"),
       seed: z.number().int().min(0).max(4294967295).optional().describe("Random seed for reproducible outputs"),
       edit_resolution: z.enum(["720p", "1080p", "1440p", "2160p"]).default("1080p").describe("Image editing resolution budget if reference images provided"),
+      session: z.string().optional().describe("Pin the job to one Colab session (see colab_sessions); omit to let the router choose"),
+      parallel: z.number().int().min(1).max(5).optional().describe("Submit the same generation to N sessions at once (needs that many open sessions; each returns its own job)"),
       sampler: z.enum(["euler", "euler_ancestral", "res_multistep", "dpmpp_2m", "dpmpp_2m_sde", "er_sde", "uni_pc"]).default("euler"),
       scheduler: z.enum(["simple", "beta", "normal", "karras", "sgm_uniform"]).default("simple"),
       reference_images: z.array(z.string()).max(10).optional().describe("Array of uploaded image paths (e.g. ['uploads/abc.png']) for image-to-image editing"),
@@ -214,6 +216,8 @@ export function registerGenerationTools(server: McpServer): void {
       scheduler,
       reference_images,
       thread_id,
+      session,
+      parallel,
       wait,
       timeout_seconds,
       cancel_on_timeout,
@@ -233,12 +237,31 @@ export function registerGenerationTools(server: McpServer): void {
           seed: seed ?? null,
         };
 
+        if (parallel && parallel > 1) {
+          const { jobs, groupId } = await api.createJobs({
+            kind: "image",
+            prompt,
+            inputs: reference_images || [],
+            params,
+            thread_id,
+            session: session ?? null,
+            parallel,
+          });
+          const text = [
+            `Submitted ${jobs.length} parallel image jobs (group ${groupId ?? "?"}).`,
+            ...jobs.map((j) => `• ${j.id} → session ${j.session ?? "auto"}`),
+            "They run at the same time on different sessions; poll each with get_job or wait_for_job.",
+          ].join("\n");
+          return { content: [{ type: "text", text }] };
+        }
+
         const job = await api.createJob({
           kind: "image",
           prompt,
           inputs: reference_images || [],
           params,
           thread_id,
+          session: session ?? null,
         });
 
         if (wait) {
@@ -323,12 +346,14 @@ export function registerGenerationTools(server: McpServer): void {
       seed: z.number().int().min(0).max(4294967295).optional(),
       reference_images: z.array(z.string()).max(2).optional().describe("Up to 2 reference image paths (first frame, optional second frame)"),
       thread_id: z.string().optional(),
+      session: z.string().optional().describe("Pin the job to one Colab session (see colab_sessions); omit to let the router choose"),
+      parallel: z.number().int().min(1).max(5).optional().describe("Submit the same generation to N sessions at once (needs that many open sessions; each returns its own job)"),
       wait: z.boolean().default(false),
       timeout_seconds: WAIT_TIMEOUT,
       cancel_on_timeout: CANCEL_ON_TIMEOUT,
     },
     SUBMIT_ANNOTATIONS,
-    async ({ prompt, quality, ratio, seconds, turbo, seed, reference_images, thread_id, wait, timeout_seconds, cancel_on_timeout }, extra) => {
+    async ({ prompt, quality, ratio, seconds, turbo, seed, reference_images, thread_id, session, parallel, wait, timeout_seconds, cancel_on_timeout }, extra) => {
       try {
         if (quality === "768p" && seconds >= 10 && !turbo) {
           throw new Error("768p 10s video without turbo exceeds the 30-minute limit. Choose turbo: true or 480p.");
@@ -342,12 +367,31 @@ export function registerGenerationTools(server: McpServer): void {
           seed: seed ?? null,
         };
 
+        if (parallel && parallel > 1) {
+          const { jobs, groupId } = await api.createJobs({
+            kind: "video",
+            prompt,
+            inputs: reference_images || [],
+            params,
+            thread_id,
+            session: session ?? null,
+            parallel,
+          });
+          const text = [
+            `Submitted ${jobs.length} parallel video jobs (group ${groupId ?? "?"}).`,
+            ...jobs.map((j) => `• ${j.id} → session ${j.session ?? "auto"}`),
+            "They run at the same time on different sessions; poll each with get_job or wait_for_job.",
+          ].join("\n");
+          return { content: [{ type: "text", text }] };
+        }
+
         const job = await api.createJob({
           kind: "video",
           prompt,
           inputs: reference_images || [],
           params,
           thread_id,
+          session: session ?? null,
         });
 
         if (wait) {

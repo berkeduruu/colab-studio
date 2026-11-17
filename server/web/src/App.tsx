@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  api, ApiError, isDone, isFailed, isPending, MODE_LIST, type ImageParams, type Job, type Mode, type Model3DParams, type MusicParams, type Preset, type RuntimeState, type SpeechParams, type Thread,
+  api, ApiError, isDone, isFailed, isPending, MODE_LIST, type ImageParams, type Job, type Mode, type Model3DParams, type MusicParams, type Preset, type RuntimeState, type SessionPlan, type SpeechParams, type Thread,
   type ThreadDetail, type TranscribeParams, type VideoParams,
 } from "./api";
 import {
@@ -12,6 +12,7 @@ import { Composer } from "./Composer";
 import { Feed } from "./Feed";
 import { Viewer3D } from "./Model3D";
 import { DEFAULT_PARAMS, Settings } from "./Settings";
+import { SessionPlanModal, SessionsBar } from "./Sessions";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { t, tServer } from "./i18n";
@@ -397,6 +398,42 @@ export default function App() {
     return api.runtimeAction(a).then((s) => mine === rtSeq.current && setRt(s)).catch(fail);
   };
 
+  // --- çoklu oturum: plan bir kez sorulur, oturumlar yalnızca düğmeyle açılır ---
+  const [plan, setPlan] = useState<SessionPlan | null>(null);
+  const [sessionsBusy, setSessionsBusy] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
+  // Her oturum işlemi GPU şeridini de değiştirir: yanıttan sonra durum tazelenir.
+  const refreshSessions = () => api.runtime().then(setRt).catch(fail);
+  useEffect(() => {
+    api.sessionPlan()
+      .then((p) => {
+        setPlan(p);
+        setShowPlan(!p.asked); // ilk kullanım: "kaç oturum?" sorusu
+      })
+      .catch(() => {}); // eski sunucu (uç yok): soru sorulmaz, şerit de çizilmez
+  }, []);
+  const startSession = () => {
+    setSessionsBusy(true);
+    api.sessionStart(1)
+      .then(refreshSessions)
+      .then(() => api.sessionPlan().then(setPlan))
+      .catch(fail)
+      .finally(() => setSessionsBusy(false));
+  };
+  const stopSession = (name: string) => {
+    api.sessionStop(name).then(refreshSessions).catch(fail);
+  };
+  const savePlan = (value: number, keepWarm: boolean) => {
+    setSessionsBusy(true);
+    api.saveSessionPlan({ plan: value, keep_warm: keepWarm })
+      .then((p) => {
+        setPlan(p);
+        setShowPlan(false);
+      })
+      .catch(fail)
+      .finally(() => setSessionsBusy(false));
+  };
+
   return (
     <div className={`app ${showSettings ? "with-settings" : ""}`}>
       <Sidebar
@@ -432,6 +469,14 @@ export default function App() {
           onToggleLog={() => (logLines === null ? api.runtimeLog().then((r) => setLogLines(r.lines)).catch(fail) : setLogLines(null))}
           onToggleSettings={() => setShowSettings(!showSettings)}
           onToggleMenu={() => setShowMenu(!showMenu)}
+        />
+        <SessionsBar
+          sessions={rt?.sessions}
+          limits={rt?.limits}
+          busy={sessionsBusy}
+          onStart={startSession}
+          onStop={stopSession}
+          onOpenPlan={() => setShowPlan(true)}
         />
         {error && (
           <div className="banner err" role="alert">
@@ -589,6 +634,9 @@ export default function App() {
         </Overlay>
       )}
       {viewer3d && <Viewer3D src={viewer3d} onClose={() => setViewer3d(null)} />}
+      {showPlan && plan && (
+        <SessionPlanModal plan={plan} busy={sessionsBusy} onSave={savePlan} onClose={() => setShowPlan(false)} />
+      )}
       {logLines !== null && (
         <Overlay className="log" label={t("Kayıtlar")} onClose={() => setLogLines(null)}>
           <header>

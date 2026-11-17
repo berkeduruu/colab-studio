@@ -45,6 +45,36 @@ export interface QueueInfo {
   starts_in?: Record<string, number | null>;
 }
 
+/** Bir Colab oturumu (`docs/multi-session.md`): kendi GPU çalışma zamanı, portu ve kuyruk yuvası. */
+export interface SessionInfo {
+  name: string;
+  slot: number;
+  phase: Phase;
+  detail: string | null;
+  /** Oturumun yerel ComfyUI portu (slot 0: 8188, sonrakiler 8200, 8210, …). */
+  port: number;
+  idle_seconds: number | null;
+  idle_minutes: number;
+  auto_shutdown: boolean;
+  session_seconds: number | null;
+  session_spent: number | null;
+  packs?: Record<string, PackStatus>;
+}
+
+/** Eşzamanlılık sınırları: max donanım tavanı, plan kullanıcının seçimi. */
+export interface SessionLimits {
+  max: number;
+  default: number;
+  plan: number;
+  active: number;
+}
+
+/** Plan yanıtı: sınırlar + soru bir kez sorulsun diye `asked` + `keep_warm`. */
+export interface SessionPlan extends SessionLimits {
+  asked: boolean;
+  keep_warm?: boolean;
+}
+
 export interface RuntimeState {
   phase: Phase;
   detail: string;
@@ -60,6 +90,9 @@ export interface RuntimeState {
   gpu: string;
   packs?: Record<string, PackStatus>;
   gpu_now?: { t: number; gpu: number; vram_used: number; vram_total: number } | null;
+  /** Tüm oturumlar ve sınırlar (çoklu oturum sürümüyle geldi); eski sunucuda yok, şerit çizilmez. */
+  sessions?: SessionInfo[];
+  limits?: SessionLimits;
 }
 
 /** Çalışan işin canlı durumu: eta kalan sn (bu tür/ayar ilk kez çalışıyorsa null); stage_*
@@ -249,6 +282,15 @@ export const api = {
     call<RuntimeState>("POST", `/api/runtime/${action}`),
   metrics: () => call<Metric[]>("GET", "/api/runtime/metrics"),
   runtimeLog: () => call<{ lines: string[] }>("GET", "/api/runtime/log"),
+  // --- çoklu oturum ---
+  sessionPlan: () => call<SessionPlan>("GET", "/api/sessions/plan"),
+  saveSessionPlan: (body: { plan?: number; keep_warm?: boolean }) => call<SessionPlan>("PUT", "/api/sessions/plan", body),
+  sessions: () => call<{ sessions: SessionInfo[]; limits: SessionLimits }>("GET", "/api/sessions"),
+  sessionStart: (count: number) =>
+    call<{ started: string[]; sessions: SessionInfo[]; limits: SessionLimits }>("POST", "/api/sessions", { count }),
+  sessionStop: (name: string) =>
+    call<{ sessions: SessionInfo[]; limits: SessionLimits }>("POST", `/api/sessions/${encodeURIComponent(name)}/stop`),
+  sessionsStopAll: () => call<{ sessions: SessionInfo[]; limits: SessionLimits }>("POST", "/api/sessions/stop-all"),
   threads: (mode: string) => call<Thread[]>("GET", `/api/threads?mode=${mode}`),
   thread: (id: string) => call<ThreadDetail>("GET", `/api/threads/${id}`),
   deleteThread: (id: string) => call<{ ok: boolean }>("DELETE", `/api/threads/${id}`),
