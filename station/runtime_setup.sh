@@ -10,6 +10,13 @@ STATION=/content/station
 # Açılışı tetikleyen işin model paketi (arayüzden gelen iş türü; elle başlatmada image): ilk o iner
 # ve hazır sayılmak için yalnızca o beklenir. "none": işin paketi yok (yazıya dökme), hiçbiri beklenmez.
 WANTED=${1:-image}
+# Model pack profile (second argument). Empty/"all" → every pack (the default, unchanged behaviour).
+# A comma-separated list ("image,video") downloads only those packs: small or single-purpose sessions
+# do not have to pull all ~90 GB. Unknown names are ignored by models.py (the download order holds).
+PACK_PROFILE=${2:-all}
+DEFAULT_PACKS="image speech enhance model3d video music"
+[[ ${PACK_PROFILE} == all ]] && PACK_PROFILE=${DEFAULT_PACKS}
+PACK_PROFILE=${PACK_PROFILE//,/ }
 # ComfyUI ve ses eklentileri denenmiş sürümlerine sabit (2026-10-23'te çalışan açılışın master'ı):
 # master'ı her açılışta çekmek, bir gün kırılan bir değişikliği tüm açılışları bozacak şekilde getirir.
 COMFY_COMMIT=bc5f880dbdd43e426077f42ccec53bb577ffee9f
@@ -43,7 +50,7 @@ uv --version 2>/dev/null | grep -q "^uv ${UV_VERSION}" || pip install -q "uv==${
 # değiştiriyor. --clear: aynı runtime'da yeniden koşulabilsin (var olan ortamda uv venv hata veriyordu).
 uv venv -q --clear /content/hfenv && uv pip install -q -p /content/hfenv "huggingface_hub==${HUGGINGFACE_HUB_VERSION}"
 # </dev/null: arka plan işi ssh'ın stdin'ini tutmasın (bu bağlantı yüzünden ssh dönmüyordu).
-PRIORITY_PACK=$([[ ${WANTED} == none ]] || echo "${WANTED}") nohup /content/hfenv/bin/python ${STATION}/models.py image speech enhance model3d video music >/content/models.log 2>&1 </dev/null &
+PRIORITY_PACK=$([[ ${WANTED} == none ]] || echo "${WANTED}") nohup /content/hfenv/bin/python ${STATION}/models.py ${PACK_PROFILE} >/content/models.log 2>&1 </dev/null &
 models_pid=$!
 
 phase "2/5 ComfyUI ve eklentiler indiriliyor"

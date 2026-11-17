@@ -63,6 +63,18 @@ IDLE_MINUTES = _int_setting("STUDIO_IDLE_MINUTES", "15", 1, 24 * 60, "it must be
 GPU = "L4"
 # Colab session name the studio owns; other sessions on the same account are never touched.
 SESSION = os.environ.get("STUDIO_SESSION", "studio")
+# How many Colab sessions may run at once. SESSIONS_MAX is the hard ceiling; SESSIONS_DEFAULT is the
+# plan the UI offers the first time (the user picks 1..MAX and the answer is stored in the database).
+SESSIONS_MAX = _int_setting("STUDIO_SESSIONS_MAX", "5", 1, 5, "it must be a number of sessions from 1 to 5")
+SESSIONS_DEFAULT = _int_setting(
+    "STUDIO_SESSIONS_DEFAULT", "3", 1, SESSIONS_MAX,
+    f"it must be a number of sessions from 1 to {SESSIONS_MAX} (STUDIO_SESSIONS_MAX)",
+)
+# Local ports for extra sessions: slot 1 uses 8200, slot 2 8210, ... (slot 0 keeps 8188).
+SESSIONS_PORT_BASE = _int_setting("STUDIO_SESSIONS_PORT_BASE", "8200", 1024, 65500, "it must be a port number from 1024 to 65500")
+SESSIONS_PORT_STRIDE = 10
+# Which slots are taken and which ports they own (flock-protected; survives restarts).
+SESSIONS_FILE = DATA_DIR / "sessions.json"
 # Google Colab CLI (`uv tool install google-colab-cli`).
 COLAB = os.environ.get("COLAB_BIN") or shutil.which("colab") or str(Path("~/.local/bin/colab").expanduser())
 COLAB_SESSIONS = Path("~/.config/colab-cli/sessions.json").expanduser()

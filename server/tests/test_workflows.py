@@ -279,8 +279,12 @@ def test_every_pack_is_downloaded_at_startup():
     packs = set(_station_files())
     assert packs == runtime.PACKS
     setup = (Path(workflows.__file__).resolve().parent.parent / "station" / "runtime_setup.sh").read_text()
-    line = next(l for l in setup.splitlines() if "models.py" in l and "nohup" in l)
-    assert set(line.split("models.py")[1].split(">")[0].split()) == packs
+    # Varsayılan profil: argüman verilmezse tüm paketler iner. Oturum profili ikinci argümanla
+    # daraltılabiliyor (bkz. test_sessions.test_setup_script_accepts_a_pack_profile).
+    line = next(l for l in setup.splitlines() if l.startswith("DEFAULT_PACKS="))
+    assert set(line.split("=", 1)[1].strip().strip('"').split()) == packs
+    runner = next(l for l in setup.splitlines() if "models.py" in l and "nohup" in l)
+    assert "${PACK_PROFILE}" in runner
 
 
 def test_setup_script_pins_comfyui_and_plugins():
