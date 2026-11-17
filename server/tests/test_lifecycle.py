@@ -119,3 +119,18 @@ async def test_new_sessions_are_watched_through_the_api(client, manager, watched
     assert out["started"] == [SECOND]
     await asyncio.sleep(0)
     assert SECOND in manager.tasks
+
+
+async def test_manager_start_works_with_the_real_runtime_method(db, monkeypatch, tmp_path):
+    """The API path (`Manager.start` → `SessionRuntime.start`) must work with the real object: patched
+    fakes hid a signature mismatch (a method taking only `pack` made `POST /api/sessions` return 500)."""
+    manager = sessions.Manager(sessions.Registry(tmp_path / "sessions.json", check_ports=False))
+    monkeypatch.setattr(sessions, "_manager", manager)
+
+    async def no_start(session=None):
+        return None
+
+    monkeypatch.setattr(runtime, "_start", no_start)
+    rt = manager.start(pack=None, packs=["image"])
+    assert rt.state["phase"] == "starting"
+    assert rt.state["startup"]["packs"] == ["image"]
