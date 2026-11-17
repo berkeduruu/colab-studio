@@ -71,7 +71,8 @@ def test_registry_releases_and_reuses_the_lowest_slot(tmp_path):
 
 
 def test_registry_respects_the_session_limit(tmp_path):
-    reg = sessions.Registry(tmp_path / "sessions.json", max_sessions=2, check_ports=False)
+    """The limit counts the default session too: a limit of 3 leaves two extra slots."""
+    reg = sessions.Registry(tmp_path / "sessions.json", max_sessions=3, check_ports=False)
     reg.reserve(1)
     reg.reserve(2)
     assert reg.free_slot() is None

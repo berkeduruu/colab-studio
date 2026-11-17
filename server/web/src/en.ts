@@ -111,6 +111,7 @@ export const EN: Record<string, string> = {
   "3/5 Python ortamı ve paketler kuruluyor": "3/5 Installing the Python environment and packages",
   "4/5 Qwen3-TTS ortamı kuruluyor": "4/5 Installing the Qwen3-TTS environment",
   "İptal edildi": "Cancelled",
+  "Oturum kapatıldı": "The session was closed",
   "limit bir sayı olmalı": "limit must be a number",
   "Servis yeniden başladı": "The service restarted",
   "ComfyUI bağlantısı koptu": "Lost the connection to ComfyUI",

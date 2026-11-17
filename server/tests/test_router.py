@@ -1,6 +1,6 @@
 """Routing: which session runs a job?
 
-Order: user choice → packs ready → warm model → least loaded → lowest slot. No session is opened
+Order: user choice → packs ready → least loaded → warm model → lowest slot. No session is opened
 implicitly (each one burns compute units).
 """
 import pytest
@@ -52,6 +52,14 @@ def test_a_warm_session_wins(manager):
     manager.get(f"{config.SESSION}-2").warm.add("image")
     runtime.DEFAULT.local_modes.add("image")
     assert router.choose(manager, ("image",), "image") == f"{config.SESSION}-2"
+
+
+def test_an_idle_session_beats_a_busy_warm_one(manager):
+    """A warm session with a queue loses to an idle one: otherwise every job of one kind piles onto it."""
+    second = manager.get(f"{config.SESSION}-2")
+    second.warm.add("image")
+    loads = {config.SESSION: 0, f"{config.SESSION}-2": 2, f"{config.SESSION}-3": 0}
+    assert router.choose(manager, (), "image", load=loads.get) == runtime.SESSION
 
 
 def test_the_least_loaded_session_wins(manager):

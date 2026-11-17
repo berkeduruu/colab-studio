@@ -309,6 +309,13 @@ async def runtime_state(request):
 
 
 async def runtime_start(request):
+    # Eski uç (MCP colab_runtime_start, eski arayüz) da plana uyar: ek oturumlar planı doldurduysa
+    # varsayılan oturumu açmak sınırı aşardı.
+    if runtime.state["phase"] in ("off", "error"):
+        manager, plan = _manager(request), _plan(request)
+        extra = sum(1 for rt in manager.live.values() if rt.slot != 0 and rt.state["phase"] != "off")
+        if extra >= plan:
+            raise web.HTTPConflict(text=f"eşzamanlı oturum sınırı dolu (plan {plan}): planı yükselt ya da bir oturumu kapat")
     runtime.start()
     return state_response(request)
 
@@ -330,6 +337,15 @@ def _background_stop(reason):
     _stop_task = asyncio.create_task(runtime.run_stop(reason))
     _stop_task.add_done_callback(_stop_done)
     return _stop_task
+
+
+_background = set()  # arka plan kapanışları (referans tutulmazsa çöp toplayıcı yarıda kesebilir)
+
+
+def _keep(task):
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+    return task
 
 
 def _stop_default(reason, session=None):
@@ -428,7 +444,11 @@ async def session_stop(request):
     if name == runtime.SESSION:
         _stop_default("elle kapatıldı", runtime.DEFAULT)
     else:
-        asyncio.create_task(manager.stop(name))
+        # Oturumun bekleyen işleri iptal edilir: kalsalardı kapanan oturumu yeniden açmaya çalışırlardı.
+        cancelled = studio.cancel_pending(name)
+        if cancelled:
+            runtime.log(f"{name} kapatıldı, {len(cancelled)} bekleyen iş iptal edildi")
+        _keep(asyncio.create_task(manager.stop(name)))
     return session_state_response(request)
 
 
@@ -439,7 +459,7 @@ async def sessions_stop_all(request):
     if cancelled:
         runtime.log(f"tüm oturumlar kapatıldı, {len(cancelled)} bekleyen iş iptal edildi")
     runtime.begin_stop("hepsi kapatıldı")
-    asyncio.create_task(manager.stop_all("hepsi kapatıldı"))
+    _keep(asyncio.create_task(manager.stop_all("hepsi kapatıldı")))
     return session_state_response(request)
 
 
@@ -679,6 +699,16 @@ async def on_startup(app):
         except Exception as e:  # servis ne olursa olsun açılsın
             runtime.set_phase("error", runtime.short_error(e))
             runtime.startup_cleanup_failed = True
+        # Önceki çalışmadan kalan ek oturumlar (çökme, docker compose down, yarıda kalan kapanış):
+        # Colab'da açık kalıp kredi yakmasınlar, slotları da boşalsın. Bırakılamayan kayıtta kalır.
+        try:
+            result = await sessions.manager().reap_leftovers()
+            if result["released"]:
+                runtime.log(f"önceki çalışmadan kalan oturumlar kapatıldı: {', '.join(result['released'])}")
+            for error in result["errors"]:
+                runtime.log(f"önceki çalışmadan kalan oturum kapatılamadı: {error}")
+        except Exception as e:
+            runtime.log(f"önceki çalışmadan kalan oturumlar temizlenemedi: {runtime.short_error(e, 300)}")
     app["tasks"] = [
         asyncio.create_task(runtime.watchdog(studio.has_pending_jobs, studio.record_credits)),
         asyncio.create_task(runtime.metrics_loop()),
@@ -694,7 +724,14 @@ async def on_shutdown(app):
         task.cancel()
     await asyncio.gather(*app["tasks"], return_exceptions=True)
     # Servis dururken GPU açık kalırsa boşta kapatmayı izleyen kimse olmaz ve kredi harcanmaya devam eder.
-    # Kapatılamazsa sonraki açılışta on_startup yeniden dener.
+    # Kapatılamazsa sonraki açılışta on_startup yeniden dener. Ek oturumlar da kapatılır (Docker'da ve
+    # run.sh'ta systemd'nin ExecStopPost adımı yok); aynı anda kapatılırlar, her biri dakikalar sürebilir.
+    manager = sessions.manager()
+    extra = [name for name, rt in manager.live.items() if rt.slot != 0]
+    results = await asyncio.gather(*(manager.stop(name, "servis durdu") for name in extra), return_exceptions=True)
+    for name, result in zip(extra, results):
+        if isinstance(result, BaseException):
+            runtime.log(f"{name} kapatılamadı: {runtime.short_error(result, 300)}")
     if runtime.state["phase"] != "off":
         await runtime.stop("servis durdu")
 

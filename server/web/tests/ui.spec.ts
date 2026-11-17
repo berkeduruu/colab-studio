@@ -1127,6 +1127,25 @@ test("plan dolu: oturum aç düğmesi kapalı ve nedeni görünür", async ({ pa
   api.assertClean();
 });
 
+test("kapalı varsayılan oturum planda yer tutmaz", async ({ page }) => {
+  const api = sessionsApi();
+  const session = (name: string, slot: number, phase: "off" | "ready") => ({
+    name, slot, phase, detail: null, port: slot === 0 ? 8188 : 8190 + 10 * slot, idle_seconds: null, idle_minutes: 15,
+    auto_shutdown: true, session_seconds: 0, session_spent: 0, packs: {},
+  });
+  api.rt = runtimeState({
+    phase: "off",
+    sessions: [session("studio", 0, "off"), session("studio-2", 1, "ready"), session("studio-3", 2, "ready")],
+    limits: { max: 5, default: 3, plan: 3, active: 2 },
+  });
+  await open(page, api);
+  const bar = page.getByLabel("Colab oturumları");
+  // Varsayılan oturum kapalı: 2 açık oturum, plan 3 → bir oturum daha açılabilir (sunucu da izin verir).
+  await expect(bar.getByText("Oturumlar 2/3")).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Oturum aç" })).toBeEnabled();
+  api.assertClean();
+});
+
 test("ikinci oturumun kapat düğmesi o oturumu kapatır", async ({ page }) => {
   const api = sessionsApi();
   api.rt = {

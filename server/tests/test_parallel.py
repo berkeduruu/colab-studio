@@ -96,7 +96,8 @@ async def test_jobs_of_the_same_session_wait_for_each_other(two_sessions, monkey
     monkeypatch.setattr(studio, "_run", fake_run)
     task = asyncio.create_task(studio.worker())
     try:
-        ids = [studio.create_job("t", "image", "image", p, IMAGE, [])["id"] for p in ("a", "b", "c")]
+        # Aynı oturuma yazılı üç iş (otomatik yönlendirme ikinci oturuma dağıtırdı).
+        ids = [studio.create_job("t", "image", "image", p, IMAGE, [], session=DEFAULT)["id"] for p in ("a", "b", "c")]
         for jid in ids:
             assert (await _wait_status(jid))["status"] == "done"
     finally:
@@ -164,7 +165,8 @@ async def test_a_job_without_a_session_runs_on_the_default_one(two_sessions, mon
     """Oturum yazılmamış iş varsayılan oturuma aittir: tek oturumlu davranış korunur."""
     studio.create_job("t", "image", "image", "a", IMAGE, [])
     assert studio.has_pending_jobs(DEFAULT) is True
-    assert studio.pending_count(DEFAULT) == 1
+    # Yük sayımı yalnız oturuma yazılmış işleri sayar: yönlendirilmemiş iş hiçbir oturumu dolu göstermez.
+    assert studio.pending_count(DEFAULT) == 0
 
 
 # --- paralel üretim: POST /api/jobs parallel ---
@@ -243,3 +245,85 @@ async def test_parallel_with_every_session_closed_still_runs(client, db, monkeyp
     out = await (await client.post("/api/jobs", json={"kind": "image", "prompt": "kedi", "params": IMAGE,
                                                       "parallel": 2})).json()
     assert len(out["jobs"]) == 1 and out["jobs"][0]["session"] is None and out["group_id"]
+
+
+# --- kapatılan oturum ve yük dağılımı ---
+
+
+async def test_a_closed_session_is_not_reopened_by_its_waiting_job(two_sessions, monkeypatch):
+    """Kapatılan ek oturumun sırada bekleyen işi oturumu yeniden açmaz (açsaydı kayıtta, listede ve
+    boşta kapatmada görünmeyen bir runtime kredi yakardı) ve varsayılan oturuma da kaymaz."""
+    manager = two_sessions
+    release = asyncio.Event()
+    starts = []
+
+    async def fake_run(job, session=None):
+        await release.wait()
+        raise RuntimeError("ComfyUI bağlantısı koptu")
+
+    async def fake_stop_runtime(s):
+        return None
+
+    async def fake_start(s=None):
+        starts.append(s.name if s else DEFAULT)
+
+    monkeypatch.setattr(studio, "_run", fake_run)
+    monkeypatch.setattr(runtime, "_stop_runtime_of", fake_stop_runtime)
+    monkeypatch.setattr(runtime, "_start", fake_start)
+    task = asyncio.create_task(studio.worker())
+    try:
+        first = studio.create_job("t", "image", "image", "a", IMAGE, [], session=SECOND)
+        waiting = studio.create_job("t", "image", "image", "b", IMAGE, [], session=SECOND)
+        for _ in range(100):
+            if studio.get_job(first["id"])["status"] == "running":
+                break
+            await asyncio.sleep(0.02)
+        await manager.stop(SECOND, "elle")
+        release.set()
+        await _wait_status(first["id"])
+        job = await _wait_status(waiting["id"])
+        late = studio.create_job("t", "image", "image", "c", IMAGE, [], session=SECOND)
+        late_job = await _wait_status(late["id"])
+    finally:
+        task.cancel()
+    assert starts == []
+    assert job["error"] == studio.SESSION_CLOSED and late_job["error"] == studio.SESSION_CLOSED
+
+
+async def test_closing_a_session_cancels_its_waiting_jobs(client, two_sessions, monkeypatch):
+    """Oturumu kapat: o oturumun bekleyen işleri iptal edilir, başka oturumunkiler kalır."""
+    mine = studio.create_job("t", "image", "image", "a", IMAGE, [], session=SECOND)
+    other = studio.create_job("t", "image", "image", "b", IMAGE, [], session=DEFAULT)
+
+    async def fake_stop(self, name, reason="elle kapatıldı"):
+        return None
+
+    monkeypatch.setattr(sessions.Manager, "stop", fake_stop)
+    response = await client.post(f"/api/sessions/{SECOND}/stop")
+    assert response.status == 200
+    assert studio.get_job(mine["id"])["error"] == studio.CANCELLED
+    assert studio.get_job(other["id"])["status"] == "queued"
+
+
+async def test_automatic_jobs_spread_over_the_open_sessions(two_sessions, monkeypatch):
+    """Otomatik yönlendirilen işler açık oturumlara dağılır: oturumu kapıda beklerken de yazılı olmalı,
+    yoksa bekleyen işler varsayılan oturumun yükü sayılıp hepsi aynı ek oturuma yığılıyordu."""
+    gate = asyncio.Event()
+
+    async def fake_run(job, session=None):
+        await gate.wait()
+
+    monkeypatch.setattr(studio, "_run", fake_run)
+    task = asyncio.create_task(studio.worker())
+    try:
+        ids = []
+        for i in range(6):
+            ids.append(studio.create_job("t", "image", "image", str(i), IMAGE, [])["id"])
+            await asyncio.sleep(0.05)
+        gate.set()
+        for jid in ids:
+            await _wait_status(jid)
+    finally:
+        task.cancel()
+    names = [studio.get_job(j)["session"] for j in ids]
+    assert names.count(DEFAULT) == 3 and names.count(SECOND) == 3, names

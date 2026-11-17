@@ -1,7 +1,11 @@
 """Session routing: which session runs a job?
 
-Order: the user's choice → a session whose model packs are already on disk → a warm session (the
-model is already in VRAM) → the least loaded → the lowest slot (the default session fills first).
+Order: the user's choice → a session whose model packs are already on disk → the least loaded → a
+warm session (the model is already in VRAM) → the lowest slot (the default session fills first).
+
+Load comes before warmth: loading a model takes seconds to a minute, waiting behind another job takes
+the whole job. With warmth first every job of one kind piled onto the one warm session while the other
+open sessions (each burning compute units) sat idle.
 
 A new session is never opened implicitly: every running session burns compute units, so opening one
 is the user's decision.
@@ -15,11 +19,11 @@ def usable(manager):
 
 
 def score(rt, packs=(), kind=None, load=None):
-    """Lower is better: (packs ready, model warm, waiting jobs, slot)."""
+    """Lower is better: (packs ready, waiting jobs, model warm, slot)."""
     packs_ready = all(p in rt.local_modes for p in packs)
     warm = bool(kind) and kind in rt.warm
     waiting = load(rt.name) if load else 0
-    return (0 if packs_ready else 1, 0 if warm else 1, waiting, rt.slot)
+    return (0 if packs_ready else 1, waiting, 0 if warm else 1, rt.slot)
 
 
 def choose(manager, packs=(), kind=None, load=None, assigned=None):

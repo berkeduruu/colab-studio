@@ -51,5 +51,24 @@ check "uninstall --yes keeps data and .env" 0 "kept|keeping|Done" ./install.sh -
 check "uninstall --purge deletes both" 0 "deleted" ./install.sh --uninstall --purge
 [[ ! -d ${HOME}/data && ! -f .env ]] && echo "ok    data and .env deleted" || { echo "FAIL  --purge left data or .env"; fails=$((fails + 1)); }
 
+# colab-stop-all.sh (systemd ExecStopPost) must take the session name, the colab CLI and the data folder
+# from .env like the studio does: systemd does not load .env, and the default "studio" may be someone
+# else's session on the same account.
+mkdir -p "${TMP}/repo/server" "${HOME}/data2" "${TMP}/bin"
+cp "${SRC}/deploy/colab-stop-all.sh" "${TMP}/repo/deploy/"
+cp "${SRC}/server/config.py" "${TMP}/repo/server/"
+printf '#!/usr/bin/env bash\necho "$*" >> "%s/colab.log"\n' "${TMP}" > "${TMP}/bin/colab-pinned"
+chmod +x "${TMP}/bin/colab-pinned"
+printf 'STUDIO_DATA=%s\nCOLAB_BIN=%s\nSTUDIO_SESSION=mine\n' "${HOME}/data2" "${TMP}/bin/colab-pinned" > .env
+echo '{"1": {"name": "mine-2", "port": 8200}, "2": {"name": "mine-3", "port": 8210}}' > "${HOME}/data2/sessions.json"
+check "stop-all reads .env" 0 "session=mine" env -u STUDIO_SESSION -u COLAB_BIN -u STUDIO_DATA deploy/colab-stop-all.sh --print-settings
+env -u STUDIO_SESSION -u COLAB_BIN -u STUDIO_DATA deploy/colab-stop-all.sh
+if [[ $(cat "${TMP}/colab.log" 2>/dev/null) == $'stop -s mine\nstop -s mine-2\nstop -s mine-3' && ! -f ${HOME}/data2/sessions.json ]]; then
+  echo "ok    stop-all stops the .env session and the registry's sessions with the pinned CLI"
+else
+  echo "FAIL  stop-all: $(tr '\n' '|' < "${TMP}/colab.log" 2>/dev/null)"; fails=$((fails + 1))
+fi
+rm -f .env
+
 (( fails == 0 )) || { echo "${fails} script test(s) failed"; exit 1; }
 echo "all script tests passed"

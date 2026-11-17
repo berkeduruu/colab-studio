@@ -239,3 +239,23 @@ def test_old_jobs_get_the_new_columns_on_init(tmp_path, monkeypatch):
     assert {"session", "group_id"} <= cols
     assert studio.get_job("j1")["session"] is None  # eski iş "oturum yok" olarak görünür
     studio.db.close()
+
+
+async def test_legacy_runtime_start_respects_the_plan(client, manager, started):
+    """Eski uç (MCP colab_runtime_start) varsayılan oturumu açarken planı aşamaz."""
+    await client.put("/api/sessions/plan", json={"plan": 1})
+    second = manager.ensure(1)
+    second.state["phase"] = "ready"
+    response = await client.post("/api/runtime/start", headers=UI)
+    assert response.status == 409
+    assert "eşzamanlı oturum sınırı dolu" in await response.text()
+    assert runtime.state["phase"] == "off"
+
+
+def test_the_ceiling_counts_the_default_session(tmp_path):
+    """STUDIO_SESSIONS_MAX varsayılan oturumu da sayar: 5 ise en fazla 4 ek yuva (`-2` … `-5`)."""
+    reg = sessions.Registry(tmp_path / "sessions.json", check_ports=False)
+    names = [reg.reserve()["name"] for _ in range(sessions.MAX_SESSIONS - 1)]
+    assert names[-1] == f"{runtime.SESSION}-{sessions.MAX_SESSIONS}"
+    assert reg.free_slot() is None
+    assert sessions.Registry(tmp_path / "one.json", max_sessions=1, check_ports=False).free_slot() is None

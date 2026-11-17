@@ -86,9 +86,96 @@ async def test_idle_shutdown_of_a_new_session_goes_through_the_manager(manager, 
         manager.live.pop(name, None)
 
     monkeypatch.setattr(manager, "stop", fake_stop)
+    rt.state["phase"] = "ready"
     await rt.stop_hook("15 dk boşta kaldı, GPU kapatıldı")
+    for _ in range(5):  # kapanış kendi görevinde yürür
+        await asyncio.sleep(0)
     assert stopped == [(SECOND, "15 dk boşta kaldı, GPU kapatıldı")]
     assert SECOND not in manager.live
+
+
+async def test_idle_shutdown_from_inside_the_watchdog_completes(manager, monkeypatch):
+    """Boşta kapanış, oturumun kendi watchdog görevinin içinden tetiklenir. Yönetici kapanışta o
+    görevi iptal ediyor: kapanış aynı görevde yürüseydi yarıda kesilir, faz "stopping"de takılır,
+    runtime Colab'da açık kalır ve slot hiç boşalmazdı."""
+    rt = manager.start(pack=None)
+    rt.state["phase"] = "ready"
+    released = []
+
+    async def fake_stop_runtime(s):
+        await asyncio.sleep(0.01)
+        released.append(s.name)
+
+    monkeypatch.setattr(runtime, "_stop_runtime_of", fake_stop_runtime)
+
+    async def watchdog_like():
+        await rt.stop_hook("15 dk boşta kaldı, GPU kapatıldı")
+        await asyncio.sleep(3600)  # watchdog döngüsü sürer; yönetici onu iptal eder
+
+    watchdog = asyncio.create_task(watchdog_like())
+    manager.tasks[rt.name] = [watchdog]
+    for _ in range(50):
+        if SECOND not in manager.live:
+            break
+        await asyncio.sleep(0.01)
+    assert released == [SECOND]
+    assert rt.state["phase"] == "off"
+    assert SECOND not in manager.live and manager.registry.entries() == {}
+    await asyncio.sleep(0)
+    assert watchdog.cancelled() or watchdog.done()
+
+
+async def test_a_session_that_cannot_be_released_stays_listed(manager, monkeypatch):
+    """Colab'da bırakılamayan oturum listeden ve kayıttan düşmez: yeniden kapatılabilsin,
+    colab-stop-all.sh ve sonraki açılış da onu bilsin (düşseydi kimsenin izlemediği runtime kalırdı)."""
+    rt = manager.start(pack=None)
+    rt.state["phase"] = "ready"
+
+    async def failing_stop_runtime(s):
+        raise RuntimeError("ağ yok")
+
+    monkeypatch.setattr(runtime, "_stop_runtime_of", failing_stop_runtime)
+    result = await manager.stop_all("hepsi kapatıldı")
+    assert SECOND in manager.live and rt.state["phase"] == "error"
+    assert [e["name"] for e in manager.registry.entries().values()] == [SECOND]
+    assert any(e.startswith(f"{SECOND}:") for e in result["errors"]) and SECOND not in result["stopped"]
+
+
+async def test_leftover_sessions_from_a_previous_run_are_released(manager, monkeypatch):
+    """Servis yeniden açılınca önceki çalışmadan kayıtta kalan ek oturumlar kapatılır ve slotları boşalır;
+    bırakılamayan kayıtta kalır (sonraki açılışta yeniden denenir)."""
+    manager.registry.reserve(1)
+    manager.registry.reserve(2)
+    stopped = []
+
+    async def fake_stop_runtime(self):
+        stopped.append(self.name)
+        if self.slot == 2:
+            raise RuntimeError("ağ yok")
+
+    monkeypatch.setattr(runtime.SessionRuntime, "stop_runtime", fake_stop_runtime)
+    result = await manager.reap_leftovers()
+    assert stopped == [SECOND, f"{runtime.SESSION}-3"]
+    assert result["released"] == [SECOND] and len(result["errors"]) == 1
+    assert list(manager.registry.entries()) == [2]
+    assert manager.names() == [DEFAULT]  # temizlik oturum listesine bir şey eklemez
+
+
+async def test_service_shutdown_stops_the_extra_sessions(manager, monkeypatch):
+    """Servis durunca ek oturumlar da kapanır: Docker'da ve run.sh'ta systemd'nin ExecStopPost adımı yok."""
+    import app as app_module
+
+    rt = manager.start(pack=None)
+    rt.state["phase"] = "ready"
+    stopped = []
+
+    async def fake_stop_runtime(s):
+        stopped.append(s.name)
+
+    monkeypatch.setattr(runtime, "_stop_runtime_of", fake_stop_runtime)
+    await app_module.on_shutdown({"tasks": []})
+    assert stopped == [SECOND]
+    assert SECOND not in manager.live and manager.registry.entries() == {}
 
 
 async def test_default_session_keeps_the_module_stop_path(manager):

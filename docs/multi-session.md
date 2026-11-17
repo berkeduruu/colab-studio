@@ -9,7 +9,7 @@ packs and queue slot; the job router decides where a job lands.
 
 | | Value |
 |---|---|
-| Hard ceiling | `STUDIO_SESSIONS_MAX` (default **5**) |
+| Hard ceiling | `STUDIO_SESSIONS_MAX` (default **5**, the default session included: at most 4 extra slots) |
 | Default plan | `STUDIO_SESSIONS_DEFAULT` (default **3**) |
 | Jobs per session | 1 (one ComfyUI processes one graph efficiently) |
 | Opening a session | never implicit — it costs compute units |
@@ -38,12 +38,13 @@ before an assignment is written.
 
 ## Routing
 
-`server/router.py`, evaluated **when a job starts** (not when it is queued):
+`server/router.py`, evaluated when the dispatcher takes the job, before it waits for its session; the
+choice is written to `jobs.session` right away, so jobs waiting for a session count as its load:
 
 1. `jobs.session` — the user pinned a session, or a previous routing decision.
 2. Session with the job's model packs already downloaded.
-3. Session whose model is already in VRAM (`warm`).
-4. Least waiting jobs.
+3. Least waiting jobs.
+4. Session whose model is already in VRAM (`warm`).
 5. Lowest slot.
 
 No open session → the default session. A new session is never opened automatically.
@@ -62,16 +63,31 @@ No open session → the default session. A new session is never opened automatic
 - `POST /api/sessions` `{"count": 1, "profile": "image"|null, "packs": ["image", ...]?}` → starts
   `count` sessions (respecting the plan) and returns `{"sessions": ..., "limits": ..., "started": ["studio-2"]}`.
   409 when the plan is full, 400 for an unknown pack.
-- `POST /api/sessions/{name}/stop` → 404 when unknown, stops in the background.
+- `POST /api/sessions/{name}/stop` → 404 when unknown, cancels that session's waiting jobs and stops it in
+  the background. A session that cannot be released stays listed (phase `error`) so it can be closed again.
 - `POST /api/sessions/stop-all` → stops every extra session, then the default one.
 - `GET /api/sessions/plan` → `{"max", "default", "plan", "active", "asked", "keep_warm"}`
 - `PUT /api/sessions/plan` `{"plan": 2, "keep_warm": false}` → clamped to 1..max, stamps `asked_at`.
 
-`GET /api/runtime` keeps its exact old shape and **adds** `sessions` + `limits`.
+`GET /api/runtime` keeps its exact old shape and **adds** `sessions` + `limits`. `POST /api/runtime/start`
+answers 409 when the extra sessions already fill the plan.
 
 Jobs: `POST /api/jobs` accepts `"session": "studio-2" | "auto" | null` and `"parallel": N`.
 `parallel > 1` fans the job out over N sessions, returns `{"jobs": [...], "group_id": "..."}`; a
 single job keeps the old response shape (one job object). `jobs` rows carry `session` and `group_id`.
+
+## Shutdown and leftovers
+
+- Idle shutdown (`STUDIO_IDLE_MINUTES`) applies to every session; an extra session that idles out is
+  stopped and its slot released.
+- Stopping the service stops every extra session too (in-app, so Docker and `run.sh` are covered),
+  then the default one. systemd additionally runs `deploy/colab-stop-all.sh` as `ExecStopPost`; it reads
+  `STUDIO_DATA`, `COLAB_BIN` and `STUDIO_SESSION` through `server/config.py`, i.e. from `.env`.
+- At startup the studio releases any extra session still listed in `sessions.json` from a previous
+  run (crash, `docker compose down`, cut-short shutdown); one that cannot be released stays listed
+  and is retried at the next start.
+- A job whose session was closed fails with "Oturum kapatıldı" instead of reopening it or moving to the
+  default session.
 
 ## SessionRuntime (server/runtime.py)
 

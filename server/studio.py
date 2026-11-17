@@ -46,13 +46,27 @@ def model_packs(job):
 
 def session_for(job):
     """İşin oturumu: kayıtta yazılıysa o (kullanıcı seçimi ya da önceki yönlendirme), yoksa
-    yönlendirici seçer (paket hazır → ısınmış → en az yüklü → küçük slot)."""
+    yönlendirici seçer (paket hazır → en az yüklü → ısınmış → küçük slot). İşin oturumu kapatıldıysa
+    None döner."""
     manager = sessions.manager()
     name = job.get("session") if job else None
     if not name:
         name = router.choose(manager, model_packs(job) if job else (), job["kind"] if job else None,
                              load=pending_count)
-    return manager.get(name) or runtime.DEFAULT
+    rt = manager.get(name)
+    if rt is None and name != runtime.SESSION:
+        # İşin oturumu kapatıldı: iş varsayılan oturuma kaydırılmaz (kullanıcının açmadığı GPU'yu açardı).
+        return None
+    return rt or runtime.DEFAULT
+
+
+SESSION_CLOSED = "Oturum kapatıldı"
+
+
+def _session_gone(rt):
+    """Ek oturum kapatılıp yöneticiden düştüyse True: o oturumun nesnesiyle yeniden açılış yapılmamalı
+    (kayıtta, listede ve boşta kapatmada görünmeyen bir runtime kredi yakmaya devam ederdi)."""
+    return rt is not runtime.DEFAULT and sessions.manager().get(rt.name) is not rt
 
 
 # Varsayılan oturumda modül fonksiyonları çağrılır: testler bunları yamalıyor ve tek oturumlu
@@ -432,12 +446,15 @@ def _set_status(jid, status, **fields):
 
 
 def pending_count(session):
-    """Oturumda bekleyen/çalışan iş sayısı: yönlendirmede yük göstergesi."""
+    """Oturuma atanmış bekleyen/çalışan iş sayısı: yönlendirmede yük göstergesi.
+
+    Oturumu henüz yazılmamış işler (yönlendirilmekte olan iş dahil) hiçbir oturumun yükü sayılmaz:
+    varsayılan oturuma sayılsalardı varsayılan oturum dolu görünür, işler ek oturumlara yığılırdı.
+    Dağıtıcı oturumu iş kapıya girmeden yazar."""
     name = session if isinstance(session, str) else session.name
     row = db.execute(
-        "SELECT COUNT(*) AS c FROM jobs WHERE status IN ('queued','waiting_gpu','running') "
-        "AND (session=? OR (session IS NULL AND ?=?))",
-        (name, name, runtime.SESSION),
+        "SELECT COUNT(*) AS c FROM jobs WHERE status IN ('queued','waiting_gpu','running') AND session=?",
+        (name,),
     ).fetchone()
     return row["c"]
 
@@ -502,7 +519,9 @@ async def cancel_job(jid):
     elif job["status"] == "running":
         cancelled.add(jid)
         # İş hangi oturumda çalışıyorsa kesme ona gider: başka oturumun grafiği durdurulmaz.
-        await interrupt_comfy(session_for(job))
+        rt = session_for(job)
+        if rt is not None:  # oturumu kapatıldıysa kesilecek ComfyUI kalmadı
+            await interrupt_comfy(rt)
     return get_job(jid)
 
 
@@ -562,6 +581,14 @@ async def _dispatch(jid):
         if job is None or job["status"] != "queued":  # iptal edilmiş ya da silinmiş
             return
         rt = session_for(job)
+        if rt is None:
+            _set_status(jid, "error", error=SESSION_CLOSED, finished_at=time.time())
+            return
+        if job.get("session") != rt.name:
+            # Yönlendirme sonucu kapıya girmeden yazılır: kapıda bekleyen iş de oturumunun yükü
+            # sayılsın (yazılmazsa varsayılan oturumun yükü sayılıyor, sonraki işler hep aynı ek
+            # oturuma yığılıyordu).
+            _update(jid, session=rt.name)
         async with _gate(rt):
             # Varsayılan oturumda eski imza (tek argüman) korunur: testler `_work`'ü yamalıyor.
             await (_work(jid) if rt is runtime.DEFAULT else _work(jid, rt))
@@ -592,6 +619,9 @@ async def _work(jid, session=None):
         cancelled.discard(jid)
         return
     rt = _session(session) if session is not None else session_for(job)
+    if rt is None or _session_gone(rt):
+        _set_status(jid, "error", error=SESSION_CLOSED, finished_at=time.time())
+        return
     if job.get("session") != rt.name:  # iş hangi oturumda çalıştığını taşır
         _update(jid, session=rt.name)
     packs = model_packs(job)
@@ -607,6 +637,8 @@ async def _work(jid, session=None):
                     if rt.state["phase"] == "starting" and not has_pending_jobs(rt):
                         await _stop_for(rt, "iş iptal edildi, GPU kapatılıyor")
                     raise RuntimeError(CANCELLED)
+                if _session_gone(rt):  # beklerken oturum kapatıldı: yeniden açılmaz
+                    raise RuntimeError(SESSION_CLOSED)
                 if rt.state["phase"] in ("off", "error"):
                     if started:
                         raise RuntimeError(f"GPU açılamadı: {rt.state['detail']}")

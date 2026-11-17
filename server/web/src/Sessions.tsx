@@ -44,10 +44,14 @@ export function SessionsBar({ sessions, limits, busy, onStart, onStop, onOpenPla
   if (!sessions || sessions.length === 0) return null; // eski sunucu: şerit görünmez
   const plan = limits?.plan ?? sessions.length;
   const max = limits?.max ?? plan;
-  const full = sessions.length >= plan;
+  // Plan açık oturumları sayar (sunucuyla aynı: kapalı varsayılan oturum yer tutmaz). Ek oturum
+  // yuvaları en fazla max-1'dir: varsayılan oturum kapalıyken de bundan fazlası açılamaz.
+  const open = sessions.filter((s) => s.phase !== "off").length;
+  const extras = sessions.filter((s) => s.slot !== 0).length;
+  const full = open >= plan || extras >= max - 1;
   return (
     <div className="sessions-bar" aria-label={t("Colab oturumları")}>
-      <span className="stat"><Layers size={14} /> {t("Oturumlar")} {sessions.length}/{plan}</span>
+      <span className="stat"><Layers size={14} /> {t("Oturumlar")} {open}/{plan}</span>
       {sessions.map((s) => (
         <span
           key={s.name}

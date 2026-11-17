@@ -120,7 +120,9 @@ class Registry:
             return len(self._read())
 
     def _free_slot(self, entries):
-        limit = max(1, min(self.max_sessions, MAX_SESSIONS))
+        # The limit counts slot 0 too: with MAX 5 the extra slots are 1..4 (`<session>-2` … `-5`), so
+        # slot 0 plus every extra slot never exceeds the ceiling. MAX 1 means no extra slot at all.
+        limit = min(self.max_sessions, MAX_SESSIONS) - 1
         for slot in range(1, limit + 1):
             if slot not in entries:
                 return slot
@@ -214,6 +216,7 @@ class Manager:
         self.registry = registry if registry is not None else Registry(max_sessions=max_sessions)
         self.live = {runtime.SESSION: runtime.DEFAULT}
         self.tasks = {}
+        self._stopping = set()  # idle stops in flight (a reference keeps them from being collected)
 
     def get(self, name):
         return self.live.get(name)
@@ -249,10 +252,26 @@ class Manager:
         self.live[name] = rt
         return rt
 
+    def _idle_stop_hook(self, name):
+        """Idle shutdown of an extra session, called from inside that session's own watchdog task.
+
+        The stop runs in a task of its own: `stop()` cancels the session's watchdog, and cancelling
+        the task that is awaiting the stop would abort it halfway (phase stuck in "stopping", the
+        runtime left running on Colab, the slot never released)."""
+        async def hook(reason):
+            rt = self.live.get(name)
+            if rt is None or rt.state["phase"] != "ready":
+                return
+            rt.begin_stop(reason)  # the next watchdog tick must not start a second stop
+            task = asyncio.create_task(self.stop(name, reason))
+            self._stopping.add(task)
+            task.add_done_callback(self._stopping.discard)
+        return hook
+
     def start(self, slot=None, pack="image", keep_warm=None, packs=None):
         rt = self.ensure(slot)
         if rt.slot != 0:
-            rt.stop_hook = lambda reason, name=rt.name: self.stop(name, reason)
+            rt.stop_hook = self._idle_stop_hook(rt.name)
         if keep_warm is not None:
             rt.state["auto_shutdown"] = not keep_warm
         rt.start(pack, packs=packs)
@@ -276,20 +295,54 @@ class Manager:
             return None
         self.unwatch(rt)
         await rt.stop(reason)
+        if rt.slot != 0 and rt.state["phase"] == "error":
+            # The runtime could not be released (no network, colab CLI error): the session stays in
+            # the registry and the list, so closing it again, "stop all" and `colab-stop-all.sh` still
+            # know about it. Dropping it here would leave a runtime nobody tracks burning credits.
+            return rt
         rt.stop_hook = None
         if rt.slot != 0:
             self.registry.release(rt.slot)
             self.live.pop(name, None)
         return rt
 
+    async def reap_leftovers(self):
+        """Releases extra sessions left in the registry by a previous run of the service.
+
+        A crash, `docker compose down` or a cut-short shutdown leaves them open on Colab and their
+        slots taken in `sessions.json`; without this the studio would neither see nor stop them and
+        would eventually refuse new sessions ("limit reached") with nothing open. A session that
+        cannot be released stays in the registry and is tried again at the next start."""
+        released, errors = [], []
+        for slot, entry in sorted(self.registry.entries().items()):
+            name = entry.get("name") or session_name(slot)
+            if name in self.live:
+                continue
+            rt = runtime.SessionRuntime(slot=slot, name=name,
+                                        host_alias=entry.get("host_alias") or host_alias(slot),
+                                        data_dir=data_dir(slot), comfy_port=entry.get("port") or slot_port(slot),
+                                        ssh_conf=entry.get("ssh_conf") or ssh_conf_path(slot))
+            try:
+                await rt.stop_runtime()
+            except Exception as e:
+                errors.append(f"{name}: {runtime.short_error(e, 200)}")
+                continue
+            self.registry.release(slot)
+            released.append(name)
+        return {"released": released, "errors": errors}
+
     async def stop_all(self, reason="all closed"):
         stopped, errors = [], []
         for name in sorted(self.live, key=lambda n: self.live[n].slot, reverse=True):
             try:
-                await self.stop(name, reason)
-                stopped.append(name)
+                rt = await self.stop(name, reason)
             except RuntimeError as e:
                 errors.append(f"{name}: {e}")
+                continue
+            if rt is not None and rt.state["phase"] == "error":  # could not be released: still listed
+                errors.append(f"{name}: {rt.state['detail']}")
+            else:
+                stopped.append(name)
         return {"stopped": stopped, "errors": errors}
 
 
