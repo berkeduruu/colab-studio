@@ -7,6 +7,8 @@ import math
 import os
 import socket
 import sys
+import time
+import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -14,7 +16,9 @@ from aiohttp import web
 
 import config
 import i18n
+import router
 import runtime
+import sessions
 import studio
 import workflows
 
@@ -277,17 +281,43 @@ async def english_for_other_clients(request, handler):
 
 # --- runtime ---
 
-def state_response():
-    return web.json_response({**runtime.snapshot(), "credit_stats": studio.credit_stats(), "queue": studio.queue_info()})
+def _manager(request=None):
+    """Açık oturumların yöneticisi (süreç genelinde tek: iş dağıtıcısı da aynısını kullanır)."""
+    return sessions.manager()
+
+
+def _plan(request=None):
+    """Kullanıcının seçtiği eşzamanlı oturum planı (ayarlarda saklanır)."""
+    return sessions.plan_from(studio.get_settings())
+
+
+def state_response(request=None):
+    """Eski tek-oturum alanları + tüm oturumların listesi.
+
+    Eski istemciler (MCP, eski arayüz) yalnız üst düzey alanları okur; varsayılan oturum (slot 0)
+    listede olduğu için davranışları değişmez."""
+    body = {**runtime.snapshot(), "credit_stats": studio.credit_stats(), "queue": studio.queue_info()}
+    if request is not None:
+        manager = _manager(request)
+        body["sessions"] = manager.snapshot()
+        body["limits"] = manager.limits(_plan(request))
+    return web.json_response(body)
 
 
 async def runtime_state(request):
-    return state_response()
+    return state_response(request)
 
 
 async def runtime_start(request):
+    # Eski uç (MCP colab_runtime_start, eski arayüz) da plana uyar: ek oturumlar planı doldurduysa
+    # varsayılan oturumu açmak sınırı aşardı.
+    if runtime.state["phase"] in ("off", "error"):
+        manager, plan = _manager(request), _plan(request)
+        extra = sum(1 for rt in manager.live.values() if rt.slot != 0 and rt.state["phase"] != "off")
+        if extra >= plan:
+            raise web.HTTPConflict(text=f"eşzamanlı oturum sınırı dolu (plan {plan}): planı yükselt ya da bir oturumu kapat")
     runtime.start()
-    return state_response()
+    return state_response(request)
 
 
 _stop_task = None
@@ -301,26 +331,48 @@ def _stop_done(task):
         runtime.log(f"kapatma başarısız: {runtime.short_error(error, 300)}")
 
 
+def _background_stop(reason):
+    """Kapanışı arka planda yürütür (3 dakikaya kadar sürebilir): istek anında döner, arayüz yoklar."""
+    global _stop_task
+    _stop_task = asyncio.create_task(runtime.run_stop(reason))
+    _stop_task.add_done_callback(_stop_done)
+    return _stop_task
+
+
+_background = set()  # arka plan kapanışları (referans tutulmazsa çöp toplayıcı yarıda kesebilir)
+
+
+def _keep(task):
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+    return task
+
+
+def _stop_default(reason, session=None):
+    """Varsayılan oturumu kapatır. Faz hemen "stopping" olur (yanıt güncel durumu göstersin) ve
+    bekleyen/çalışan işler iptal edilir: kalsalardı ilki GPU'yu hemen yeniden açardı.
+
+    `session` verilirse yalnız o oturumun işleri iptal edilir: `/api/runtime/stop` (session yok) her
+    şeyi durdurur, `POST /api/sessions/{ad}/stop` başka oturumun sırasına dokunmaz."""
+    runtime.begin_stop(reason)
+    cancelled = studio.cancel_pending(session)
+    if cancelled:
+        runtime.log(f"GPU elle kapatıldı, {len(cancelled)} bekleyen iş iptal edildi")
+    _background_stop(reason)
+
+
 async def runtime_stop(request):
     """Kapanış 3 dakikaya kadar sürebilir (ssh çıkışı + `colab stop` + artık runtime'lar); isteği
     bekletmek nginx'in 120 sn zaman aşımına takılıp arayüzde hata gösteriyordu. Kapanış arka planda
     yürür, istek anında döner, arayüz durumu yoklayarak izler. Bekleyen ve çalışan işler iptal olur."""
-    global _stop_task
     if runtime.state["phase"] not in ("stopping", "off"):
-        reason = "elle kapatıldı"
-        runtime.begin_stop(reason)  # faz hemen "stopping": yanıt güncel durumu göstersin
-        # Sıradaki işler kalsaydı ilki GPU'yu hemen yeniden açardı: elle kapatma hepsini durdurur.
-        cancelled = studio.cancel_pending()
-        if cancelled:
-            runtime.log(f"GPU elle kapatıldı, {len(cancelled)} bekleyen iş iptal edildi")
-        _stop_task = asyncio.create_task(runtime.run_stop(reason))
-        _stop_task.add_done_callback(_stop_done)
-    return state_response()
+        _stop_default("elle kapatıldı")
+    return state_response(request)
 
 
 async def runtime_toggle_auto(request):
     runtime.toggle_auto()
-    return state_response()
+    return state_response(request)
 
 
 async def runtime_metrics(request):
@@ -329,6 +381,107 @@ async def runtime_metrics(request):
 
 async def runtime_log(request):
     return web.json_response({"lines": list(runtime.logs)})
+
+
+# --- oturumlar (çoklu Colab oturumu) ---
+
+def sessions_body(manager, plan):
+    return {"sessions": manager.snapshot(), "limits": manager.limits(plan)}
+
+
+def session_state_response(request):
+    manager = _manager(request)
+    return web.json_response(sessions_body(manager, _plan(request)))
+
+
+async def sessions_list(request):
+    return session_state_response(request)
+
+
+async def session_start(request):
+    """Yeni oturum(lar) açar. Plan dolduysa 409; açılan oturum arka planda hazırlanır."""
+    body = await read_json(request)
+    if not isinstance(body, dict):
+        bad("istek gövdesi bir nesne olmalı")
+    count = body.get("count", 1)
+    if not isinstance(count, int) or isinstance(count, bool) or not 1 <= count <= sessions.MAX_SESSIONS:
+        bad(f"count 1-{sessions.MAX_SESSIONS} arası olmalı")
+    profile = body.get("profile", "image")
+    if profile is not None and (not isinstance(profile, str) or profile not in runtime.PACKS):
+        bad(f"bilinmeyen model paketi: {profile}")
+    packs = body.get("packs")
+    if packs is not None:
+        if not isinstance(packs, list) or not packs or not all(isinstance(p, str) for p in packs):
+            bad("packs model paketi adlarından oluşan boş olmayan bir liste olmalı")
+        unknown = sorted(set(packs) - runtime.PACKS)
+        if unknown:
+            bad(f"bilinmeyen model paketi: {unknown[0]}")
+    manager = _manager(request)
+    plan = _plan(request)
+    limit = min(plan, sessions.MAX_SESSIONS)
+    if manager.active_count() >= limit:
+        raise web.HTTPConflict(text=f"eşzamanlı oturum sınırı dolu (plan {plan}): planı yükselt ya da bir oturumu kapat")
+    keep_warm = bool(studio.get_settings().get(sessions.KEEP_WARM_KEY))
+    started = []
+    try:
+        for _ in range(min(count, limit - manager.active_count())):
+            rt = manager.start(pack=profile, keep_warm=keep_warm, packs=packs)
+            # Her oturum kendi boşta kapatma/kredi/metrik izlemesini alır; yoksa oturum boşta
+            # kaldığında kapanmaz ve kredi yakmaya devam eder.
+            manager.watch(rt, lambda rt=rt: studio.has_pending_jobs(rt), studio.record_credits)
+            started.append(rt.name)
+    except sessions.PortBusy as e:
+        raise web.HTTPConflict(text=str(e)) from None
+    return web.json_response({**sessions_body(manager, plan), "started": started})
+
+
+async def session_stop(request):
+    name = request.match_info["name"]
+    manager = _manager(request)
+    if manager.get(name) is None:
+        raise web.HTTPNotFound(text=f"oturum bulunamadı: {name}")
+    # Kapanış 3 dakikaya kadar sürebilir: isteği bekletmek yerine arka planda yürütülür (arayüz yoklar).
+    if name == runtime.SESSION:
+        _stop_default("elle kapatıldı", runtime.DEFAULT)
+    else:
+        # Oturumun bekleyen işleri iptal edilir: kalsalardı kapanan oturumu yeniden açmaya çalışırlardı.
+        cancelled = studio.cancel_pending(name)
+        if cancelled:
+            runtime.log(f"{name} kapatıldı, {len(cancelled)} bekleyen iş iptal edildi")
+        _keep(asyncio.create_task(manager.stop(name)))
+    return session_state_response(request)
+
+
+async def sessions_stop_all(request):
+    manager = _manager(request)
+    # Önce bekleyen işler iptal edilir: kalsalardı biri GPU'yu hemen yeniden açardı.
+    cancelled = studio.cancel_pending()
+    if cancelled:
+        runtime.log(f"tüm oturumlar kapatıldı, {len(cancelled)} bekleyen iş iptal edildi")
+    runtime.begin_stop("hepsi kapatıldı")
+    _keep(asyncio.create_task(manager.stop_all("hepsi kapatıldı")))
+    return session_state_response(request)
+
+
+async def session_plan_get(request):
+    settings = studio.get_settings()
+    plan = sessions.plan_from(settings)
+    return web.json_response({**sessions.limits(_manager(request).active_count(), plan),
+                              "asked": settings.get(sessions.ASKED_KEY) is not None,
+                              "keep_warm": bool(settings.get(sessions.KEEP_WARM_KEY))})
+
+
+async def session_plan_put(request):
+    """Kullanıcının "kaç oturum?" cevabı. `asked_at` damgalanır: soru bir kez sorulur."""
+    body = await read_json(request)
+    if not isinstance(body, dict):
+        bad("istek gövdesi bir nesne olmalı")
+    plan = sessions.clamp_plan(body.get("plan"))
+    studio.save_setting(sessions.PLAN_KEY, plan)
+    studio.save_setting(sessions.ASKED_KEY, time.time())
+    if "keep_warm" in body:
+        studio.save_setting(sessions.KEEP_WARM_KEY, bool(body["keep_warm"]))
+    return await session_plan_get(request)
 
 
 # --- sohbetler ---
@@ -364,6 +517,15 @@ async def upload(request):
 
 
 # --- işler ---
+
+def fan_out_sessions(count):
+    """Paralel üretimde işlerin dağıtılacağı oturumlar: en az yüklü `count` açık oturum.
+
+    Açık oturum yoksa tek iş varsayılan oturumda çalışır (None = yönlendirici karar verir)."""
+    manager = _manager()
+    live = sorted(router.usable(manager), key=lambda rt: router.score(rt, load=studio.pending_count))
+    return [rt.name for rt in live[:count]] or [None]
+
 
 async def job_create(request):
     body = await read_json(request)
@@ -411,16 +573,36 @@ async def job_create(request):
         mode, params = "image", {}
     else:
         bad(f"bilinmeyen iş türü: {kind}")
+    session_param = body.get("session")
+    if session_param in ("", "auto"):  # "auto": yönlendirici karar verir (iş kaydında boş kalır)
+        session_param = None
+    if session_param is not None and (not isinstance(session_param, str)
+                                      or sessions.manager().get(session_param) is None):
+        raise web.HTTPNotFound(text=f"oturum bulunamadı: {session_param}")
+    parallel = body.get("parallel", 1)
+    if not isinstance(parallel, int) or isinstance(parallel, bool) or not 1 <= parallel <= sessions.MAX_SESSIONS:
+        bad(f"parallel 1-{sessions.MAX_SESSIONS} arası olmalı")
+    if session_param and parallel > 1:
+        bad("belirli bir oturum seçildiyse parallel 1 olmalı")
     thread_id = None if kind == "enhance" else body.get("thread_id")
     if thread_id is not None and studio.get_thread(thread_id) is None:
         raise web.HTTPNotFound(text="sohbet bulunamadı")
     if kind != "enhance" and thread_id is None:
         thread_id = studio.create_thread(mode, prompt)["id"]
+    # Tek işte oturum boş bırakılır: yönlendirici kararı çalışma anında (daha güncel durumla) verir.
+    if session_param:
+        targets = [session_param]
+    else:
+        targets = fan_out_sessions(parallel) if parallel > 1 else [None]
+    group_id = uuid.uuid4().hex if parallel > 1 else None
     try:
-        job = studio.create_job(thread_id, mode, kind, prompt, params, inputs)
+        created = [studio.create_job(thread_id, mode, kind, prompt, params, inputs,
+                                     session=name, group_id=group_id) for name in targets]
     except ValueError as e:
         bad(str(e))
-    return web.json_response(job)
+    if parallel == 1 and len(created) == 1:  # tek iş: eski yanıt biçimi (mevcut istemciler bozulmasın)
+        return web.json_response(created[0])
+    return web.json_response({"jobs": created, "group_id": group_id})
 
 
 async def media_list(request):
@@ -469,7 +651,8 @@ async def preset_delete(request):
 
 # --- ayarlar (tarayıcıdan bağımsız, her cihazda aynı) ---
 
-SETTING_KEYS = {"mode", "image.params", "video.params", "music.params", "speech.params", "transcribe.params", "model3d.params"}
+SETTING_KEYS = {"mode", "image.params", "video.params", "music.params", "speech.params", "transcribe.params",
+                "model3d.params", "sessions.plan", "sessions.asked_at", "sessions.keep_warm"}
 
 
 async def models_get(request):
@@ -489,7 +672,7 @@ async def setting_put(request):
     # Ayarlar her cihazda açılışta okunur: geçersiz değer arayüzü her yerde bozardı.
     if key == "mode" and (not isinstance(value, str) or value not in MODES):
         bad(f"geçersiz mod: {value}")
-    if key != "mode" and not isinstance(value, dict):
+    if key != "mode" and not key.startswith("sessions.") and not isinstance(value, dict):
         bad(f"{key} bir nesne olmalı")
     studio.save_setting(key, value)
     return web.json_response({"ok": True})
@@ -516,6 +699,16 @@ async def on_startup(app):
         except Exception as e:  # servis ne olursa olsun açılsın
             runtime.set_phase("error", runtime.short_error(e))
             runtime.startup_cleanup_failed = True
+        # Önceki çalışmadan kalan ek oturumlar (çökme, docker compose down, yarıda kalan kapanış):
+        # Colab'da açık kalıp kredi yakmasınlar, slotları da boşalsın. Bırakılamayan kayıtta kalır.
+        try:
+            result = await sessions.manager().reap_leftovers()
+            if result["released"]:
+                runtime.log(f"önceki çalışmadan kalan oturumlar kapatıldı: {', '.join(result['released'])}")
+            for error in result["errors"]:
+                runtime.log(f"önceki çalışmadan kalan oturum kapatılamadı: {error}")
+        except Exception as e:
+            runtime.log(f"önceki çalışmadan kalan oturumlar temizlenemedi: {runtime.short_error(e, 300)}")
     app["tasks"] = [
         asyncio.create_task(runtime.watchdog(studio.has_pending_jobs, studio.record_credits)),
         asyncio.create_task(runtime.metrics_loop()),
@@ -531,7 +724,14 @@ async def on_shutdown(app):
         task.cancel()
     await asyncio.gather(*app["tasks"], return_exceptions=True)
     # Servis dururken GPU açık kalırsa boşta kapatmayı izleyen kimse olmaz ve kredi harcanmaya devam eder.
-    # Kapatılamazsa sonraki açılışta on_startup yeniden dener.
+    # Kapatılamazsa sonraki açılışta on_startup yeniden dener. Ek oturumlar da kapatılır (Docker'da ve
+    # run.sh'ta systemd'nin ExecStopPost adımı yok); aynı anda kapatılırlar, her biri dakikalar sürebilir.
+    manager = sessions.manager()
+    extra = [name for name, rt in manager.live.items() if rt.slot != 0]
+    results = await asyncio.gather(*(manager.stop(name, "servis durdu") for name in extra), return_exceptions=True)
+    for name, result in zip(extra, results):
+        if isinstance(result, BaseException):
+            runtime.log(f"{name} kapatılamadı: {runtime.short_error(result, 300)}")
     if runtime.state["phase"] != "off":
         await runtime.stop("servis durdu")
 
@@ -548,6 +748,12 @@ def create_app():
         web.post("/api/runtime/toggle-auto", runtime_toggle_auto),
         web.get("/api/runtime/metrics", runtime_metrics),
         web.get("/api/runtime/log", runtime_log),
+        web.get("/api/sessions", sessions_list),
+        web.post("/api/sessions", session_start),
+        web.post("/api/sessions/stop-all", sessions_stop_all),
+        web.post("/api/sessions/{name}/stop", session_stop),
+        web.get("/api/sessions/plan", session_plan_get),
+        web.put("/api/sessions/plan", session_plan_put),
         web.get("/api/threads", threads_list),
         web.get("/api/threads/{id}", thread_get),
         web.delete("/api/threads/{id}", thread_delete),

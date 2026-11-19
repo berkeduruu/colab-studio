@@ -1075,3 +1075,148 @@ test("kayıtlı mod bilinmiyorsa arayüz boş kalmaz, görsel moduyla açılır"
   await expect(page.locator(".composer textarea")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+// --- çoklu oturum: sınır şeritte görünür, soru bir kez sorulur, oturum yalnızca düğmeyle açılır ---
+
+function sessionsApi(overrides: { asked?: boolean } = {}) {
+  const api = new MockApi();
+  api.plan = { ...api.plan, asked: overrides.asked ?? true };
+  api.rt = runtimeState({
+    phase: "ready",
+    sessions: [
+      { name: "studio", slot: 0, phase: "ready", detail: null, port: 8188, idle_seconds: 30, idle_minutes: 15,
+        auto_shutdown: true, session_seconds: 120, session_spent: 0.4, packs: {} },
+    ],
+    limits: { max: 5, default: 3, plan: 3, active: 1 },
+  });
+  return api;
+}
+
+test("oturum şeridi sınırı gösterir ve plan düğmesi var", async ({ page }) => {
+  const api = sessionsApi();
+  await open(page, api);
+  const bar = page.getByLabel("Colab oturumları");
+  await expect(bar).toBeVisible();
+  await expect(bar.getByText("Oturumlar 1/3")).toBeVisible();
+  await expect(bar.getByText("studio · hazır")).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Oturum aç" })).toBeEnabled();
+  await expect(bar.getByRole("button", { name: "Plan: 3/5" })).toBeVisible();
+  api.assertClean();
+});
+
+test("oturum aç düğmesi yeni oturum ister ve şeride ekler", async ({ page }) => {
+  const api = sessionsApi();
+  await open(page, api);
+  await page.getByLabel("Colab oturumları").getByRole("button", { name: "Oturum aç" }).click();
+  await expect(page.getByLabel("Colab oturumları").getByText("studio-2 · açılıyor")).toBeVisible();
+  const start = api.requests.find((r) => r.method === "POST" && r.path === "/api/sessions");
+  expect(start?.body).toEqual({ count: 1 });
+  api.assertClean();
+});
+
+test("plan dolu: oturum aç düğmesi kapalı ve nedeni görünür", async ({ page }) => {
+  const api = sessionsApi();
+  api.plan = { ...api.plan, plan: 1 };
+  api.rt = { ...api.rt, limits: { max: 5, default: 3, plan: 1, active: 1 } };
+  await open(page, api);
+  const start = page.getByLabel("Colab oturumları").getByRole("button", { name: "Oturum aç" });
+  await expect(start).toBeDisabled();
+  await expect(start).toHaveAttribute("title", "Plan dolu (1); planı yükselt");
+  // Dolu planına rağmen oturum isteği gönderilmez.
+  expect(api.requests.some((r) => r.method === "POST" && r.path === "/api/sessions")).toBe(false);
+  api.assertClean();
+});
+
+test("kapalı varsayılan oturum planda yer tutmaz", async ({ page }) => {
+  const api = sessionsApi();
+  const session = (name: string, slot: number, phase: "off" | "ready") => ({
+    name, slot, phase, detail: null, port: slot === 0 ? 8188 : 8190 + 10 * slot, idle_seconds: null, idle_minutes: 15,
+    auto_shutdown: true, session_seconds: 0, session_spent: 0, packs: {},
+  });
+  api.rt = runtimeState({
+    phase: "off",
+    sessions: [session("studio", 0, "off"), session("studio-2", 1, "ready"), session("studio-3", 2, "ready")],
+    limits: { max: 5, default: 3, plan: 3, active: 2 },
+  });
+  await open(page, api);
+  const bar = page.getByLabel("Colab oturumları");
+  // Varsayılan oturum kapalı: 2 açık oturum, plan 3 → bir oturum daha açılabilir (sunucu da izin verir).
+  await expect(bar.getByText("Oturumlar 2/3")).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Oturum aç" })).toBeEnabled();
+  api.assertClean();
+});
+
+test("ikinci oturumun kapat düğmesi o oturumu kapatır", async ({ page }) => {
+  const api = sessionsApi();
+  api.rt = {
+    ...api.rt,
+    sessions: [
+      ...(api.rt.sessions ?? []),
+      { name: "studio-2", slot: 1, phase: "starting", detail: null, port: 8200, idle_seconds: null, idle_minutes: 15,
+        auto_shutdown: true, session_seconds: 0, session_spent: 0, packs: {} },
+    ],
+    limits: { max: 5, default: 3, plan: 3, active: 2 },
+  };
+  await open(page, api);
+  const bar = page.getByLabel("Colab oturumları");
+  await expect(bar.getByText("Oturumlar 2/3")).toBeVisible();
+  await bar.getByRole("button", { name: "studio-2 oturumunu kapat" }).click();
+  await expect(bar.getByText("studio-2 · açılıyor")).toHaveCount(0);
+  expect(api.requests.some((r) => r.method === "POST" && r.path === "/api/sessions/studio-2/stop")).toBe(true);
+  api.assertClean();
+});
+
+test("kaç oturum sorusu ilk açılışta sorulur ve cevap sunucuya yazılır", async ({ page }) => {
+  const api = sessionsApi({ asked: false });
+  await open(page, api);
+  const dialog = page.getByRole("dialog", { name: "Kaç Colab oturumu kullanılsın?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("En fazla 5, önerilen 3", { exact: false })).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: "3 (önerilen)" })).toBeChecked();
+  await dialog.getByRole("radio", { name: "2", exact: true }).click();
+  await dialog.getByRole("button", { name: "Kaydet" }).click();
+  await expect(dialog).toBeHidden();
+  const put = api.requests.find((r) => r.method === "PUT" && r.path === "/api/sessions/plan");
+  expect(put?.body).toEqual({ plan: 2, keep_warm: false });
+  api.assertClean();
+});
+
+test("kaç oturum sorusu ikinci açılışta tekrar sorulmaz", async ({ page }) => {
+  const api = sessionsApi();
+  await open(page, api);
+  await expect(page.getByRole("dialog", { name: "Kaç Colab oturumu kullanılsın?" })).toHaveCount(0);
+  api.assertClean();
+});
+
+test("eski sunucuda (sessions yok) oturum şeridi çizilmez", async ({ page }) => {
+  const api = new MockApi();
+  api.rt = runtimeState({ phase: "ready" });
+  await open(page, api);
+  await expect(page.getByLabel("Colab oturumları")).toHaveCount(0);
+  api.assertClean();
+});
+
+test("oturum şeridi ve plan sorusu İngilizce arayüzde çevrilir", async ({ page }) => {
+  const api = sessionsApi({ asked: false });
+  api.lang = "en";
+  await api.install(page);
+  await page.goto("/");
+  await expect(page.getByText("Colab Studio")).toBeVisible();
+  const bar = page.getByLabel("Colab sessions");
+  await expect(bar.getByText("Sessions 1/3")).toBeVisible();
+  await expect(bar.getByText("studio · ready")).toBeVisible();
+  await expect(bar.getByRole("button", { name: "Open session" })).toBeEnabled();
+  await expect(bar.getByRole("button", { name: "Plan: 3/5" })).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "How many Colab sessions?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/At most 5, recommended 3/)).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: "3 (recommended)" })).toBeChecked();
+  await expect(dialog.getByLabel("Keep sessions running when idle")).not.toBeChecked();
+  await dialog.getByLabel("Keep sessions running when idle").check();
+  await expect(dialog.getByRole("button", { name: "Not now" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toBeHidden();
+  const put = api.requests.find((r) => r.method === "PUT" && r.path === "/api/sessions/plan");
+  expect(put?.body).toEqual({ plan: 3, keep_warm: true });
+  api.assertClean();
+});

@@ -147,6 +147,44 @@ export interface CreditStats {
   tracked_days: number;
 }
 
+/** Tek bir Colab oturumu: kendi GPU çalışma zamanı, portu ve kuyruk yuvası (`docs/multi-session.md`). */
+export interface SessionSnapshot {
+  name: string;
+  slot: number;
+  phase: string;
+  detail: string | null;
+  /** Oturumun yerel ComfyUI portu (slot 0: 8188). */
+  port: number;
+  idle_seconds: number | null;
+  idle_minutes: number;
+  auto_shutdown: boolean;
+  session_seconds: number | null;
+  session_spent: number | null;
+  packs: Record<string, unknown>;
+  startup: StartupProgress | null;
+  credits?: RuntimeCredits;
+  gpu?: string;
+}
+
+/** Eşzamanlılık sınırları: `max` donanım tavanı, `plan` kullanıcının seçimi. */
+export interface SessionLimits {
+  max: number;
+  default: number;
+  plan: number;
+  active: number;
+}
+
+export interface SessionList {
+  sessions: SessionSnapshot[];
+  limits: SessionLimits;
+}
+
+/** `GET /api/sessions/plan` — plan + ilk çalıştırma sorusu ve keep-warm tercihi. */
+export interface SessionPlan extends SessionLimits {
+  asked: boolean;
+  keep_warm?: boolean;
+}
+
 export interface RuntimeStatus {
   /** `server/runtime.py:PHASE_TRANSITIONS`. */
   phase: "off" | "starting" | "ready" | "stopping" | "error";
@@ -167,6 +205,9 @@ export interface RuntimeStatus {
     current: QueueCurrent | null;
     starts_in: Record<string, number | null>;
   } | null;
+  /** Tüm oturumlar (çoklu oturum sürümü); eski sunucularda yok. */
+  sessions?: SessionSnapshot[];
+  limits?: SessionLimits;
 }
 
 export type JobStatus = "queued" | "waiting_gpu" | "running" | "done" | "error";
@@ -198,6 +239,10 @@ export interface JobRecord {
   text: string | null;
   created_at: number;
   finished_at: number | null;
+  /** İşi hangi Colab oturumu çalıştırdı; `null` = çalışma anında yönlendirilir. */
+  session?: string | null;
+  /** Aynı `parallel` isteğinin işlerini bir arada tutan kimlik. */
+  group_id?: string | null;
 }
 
 export interface JobCreatePayload {
@@ -206,6 +251,10 @@ export interface JobCreatePayload {
   inputs?: string[];
   params?: Record<string, unknown>;
   thread_id?: string;
+  /** İşi bir oturuma sabitle ("studio", "studio-2", …); boş/"auto" ise yönlendirici seçer. */
+  session?: string | null;
+  /** Aynı işi N oturuma birden gönder (her oturum bir iş çalıştırır). */
+  parallel?: number;
 }
 
 export interface ThreadItem {
@@ -393,6 +442,65 @@ export async function createJob(payload: JobCreatePayload): Promise<JobRecord> {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+// --- oturumlar (çoklu oturum) ---
+// `docs/multi-session.md`: her oturum ayrı bir GPU çalışma zamanı; oturum açmak kredi harcar,
+// bu yüzden hiçbir yardımcı kendiliğinden oturum açmaz.
+
+export async function listSessions(): Promise<SessionList> {
+  return fetchJson<SessionList>("/api/sessions");
+}
+
+export async function startSessions(body: {
+  count?: number;
+  profile?: string | null;
+}): Promise<SessionList & { started: string[] }> {
+  const result = await fetchJson<Partial<SessionList> & { started?: string[] }>("/api/sessions", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return {
+    sessions: result.sessions ?? [],
+    limits: result.limits ?? { max: 1, default: 1, plan: 1, active: 0 },
+    started: result.started ?? [],
+  };
+}
+
+export async function stopSession(name: string): Promise<SessionList> {
+  return fetchJson<SessionList>(`/api/sessions/${encodeURIComponent(name)}/stop`, { method: "POST" });
+}
+
+export async function stopAllSessions(): Promise<SessionList> {
+  return fetchJson<SessionList>("/api/sessions/stop-all", { method: "POST" });
+}
+
+export async function getSessionPlan(): Promise<SessionPlan> {
+  return fetchJson<SessionPlan>("/api/sessions/plan");
+}
+
+export async function setSessionPlan(body: {
+  plan?: number;
+  keep_warm?: boolean;
+}): Promise<SessionPlan> {
+  return fetchJson<SessionPlan>("/api/sessions/plan", { method: "PUT", body: JSON.stringify(body) });
+}
+
+/**
+ * Birden çok oturuma dağıtılabilecek iş gönderir. Tek iş eski yanıt şeklini (`JobRecord`) korur;
+ * `parallel > 1` ise `{jobs, group_id}` döner — iki şekil de burada normalize edilir.
+ */
+export async function createJobs(
+  payload: JobCreatePayload
+): Promise<{ jobs: JobRecord[]; groupId: string | null }> {
+  const body = await fetchJson<JobRecord | { jobs: JobRecord[]; group_id: string | null }>("/api/jobs", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if ("jobs" in body && Array.isArray(body.jobs)) {
+    return { jobs: body.jobs, groupId: body.group_id ?? null };
+  }
+  return { jobs: [body as JobRecord], groupId: null };
 }
 
 /** Yoklama sırasında geçici ağ hatası tek bir turu boşa harcamasın: 3 kez denenir. */

@@ -12,10 +12,11 @@ Environment="PATH=@PATH@"
 ExecStart="@REPO@/.venv/bin/python" app.py
 # Only the main process gets SIGTERM first: it stops the queue, then releases the GPU runtime.
 KillMode=mixed
-# Releasing the runtime can take several minutes (ssh exit, colab stop, leftover runtimes).
-TimeoutStopSec=600
-# If shutdown was cut short anyway, try once more to release the studio's runtime (errors ignored).
-ExecStopPost=-"@COLAB@" stop -s "@SESSION@"
+# Releasing the runtimes can take several minutes (ssh exit, colab stop per session, leftovers).
+TimeoutStopSec=660
+# If shutdown was cut short anyway, release every runtime the studio may still own: the default
+# session plus the extra sessions listed in the registry (errors ignored).
+ExecStopPost=-"@REPO@/deploy/colab-stop-all.sh"
 Restart=on-failure
 RestartSec=10
 

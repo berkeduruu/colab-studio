@@ -1,6 +1,7 @@
 """Stüdyo: sohbetler, işler ve medya.
 
-İşler sırayla çalışır. GPU kapalıysa ilk iş runtime'ı açar ve hazır olmasını bekler. Sonuçlar
+İşler oturum başına sırayla çalışır (birden çok Colab oturumu açıksa farklı oturumların işleri
+birbirini beklemez). GPU kapalıysa ilk iş runtime'ı açar ve hazır olmasını bekler. Sonuçlar
 sunucuya indirilir (GPU kapanınca runtime'daki kopyalar silinir). Kullanılmayan sohbetler (varsayılan 30 gün, STUDIO_RETENTION_DAYS) silinir.
 """
 import asyncio
@@ -16,7 +17,9 @@ from pathlib import Path
 from aiohttp import ClientSession, ClientTimeout, FormData, WSMsgType
 
 import config
+import router
 import runtime
+import sessions
 import tracker
 import workflows
 
@@ -27,6 +30,74 @@ RETENTION_DAYS = config.RETENTION_DAYS  # 0: hiçbir şey kendiliğinden silinme
 CLEANUP_SECONDS = 6 * 3600
 JOB_TIMEOUT = 1800
 CLIENT_ID = "colab-studio"
+
+
+def _session(session=None):
+    """İşin çalıştığı oturum: verilmezse varsayılan (slot 0)."""
+    return runtime.DEFAULT if session is None else session
+
+
+def model_packs(job):
+    """İşin gerektirdiği model paketleri; ilki GPU açılışını tetikleyen paket olur.
+
+    Paketsiz tür (yazıya dökme) hiçbirini beklemez: modelini eklentisi ilk kullanımda indirir."""
+    return [job["kind"]] if job["kind"] in runtime.PACKS else []
+
+
+def session_for(job):
+    """İşin oturumu: kayıtta yazılıysa o (kullanıcı seçimi ya da önceki yönlendirme), yoksa
+    yönlendirici seçer (paket hazır → en az yüklü → ısınmış → küçük slot). İşin oturumu kapatıldıysa
+    None döner."""
+    manager = sessions.manager()
+    name = job.get("session") if job else None
+    if not name:
+        name = router.choose(manager, model_packs(job) if job else (), job["kind"] if job else None,
+                             load=pending_count)
+    rt = manager.get(name)
+    if rt is None and name != runtime.SESSION:
+        # İşin oturumu kapatıldı: iş varsayılan oturuma kaydırılmaz (kullanıcının açmadığı GPU'yu açardı).
+        return None
+    return rt or runtime.DEFAULT
+
+
+SESSION_CLOSED = "Oturum kapatıldı"
+
+
+def _session_gone(rt):
+    """Ek oturum kapatılıp yöneticiden düştüyse True: o oturumun nesnesiyle yeniden açılış yapılmamalı
+    (kayıtta, listede ve boşta kapatmada görünmeyen bir runtime kredi yakmaya devam ederdi)."""
+    return rt is not runtime.DEFAULT and sessions.manager().get(rt.name) is not rt
+
+
+# Varsayılan oturumda modül fonksiyonları çağrılır: testler bunları yamalıyor ve tek oturumlu
+# davranış birebir korunmalı. Yeni oturumlarda aynı işi oturum nesnesi yapar.
+def _start_for(rt, pack):
+    return runtime.start(pack) if rt is runtime.DEFAULT else rt.start(pack)
+
+
+async def _stop_for(rt, reason):
+    if rt is runtime.DEFAULT:
+        return await runtime.stop(reason)
+    return await rt.stop(reason)
+
+
+def _touch_for(rt):
+    if rt is runtime.DEFAULT:
+        return runtime.touch()
+    return rt.touch()
+
+
+async def _ensure_models_for(rt, pack, on_wait):
+    if rt is runtime.DEFAULT:
+        return await runtime.ensure_models(pack, on_wait)
+    return await rt.ensure_models(pack, on_wait)
+
+
+async def _in(rt, fn, *args):
+    """Oturum parametreli yardımcıyı çağırır: varsayılan oturumda **eski imza** kullanılır
+    (testler bu fonksiyonları oturum argümanı almadan yamalıyor)."""
+    return await (fn(*args) if rt is runtime.DEFAULT else fn(*args, rt))
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS threads (
@@ -124,8 +195,15 @@ def init():
     # bir kez VACUUM ile atılır (aşağıda); silme yolunda VACUUM gerekmez, tüm dosyayı yeniden yazardı.
     db.execute("PRAGMA secure_delete=ON")
     db.executescript(SCHEMA)
-    if "stage" not in {r["name"] for r in db.execute("PRAGMA table_info(jobs)")}:
+    job_cols = {r["name"] for r in db.execute("PRAGMA table_info(jobs)")}
+    if "stage" not in job_cols:
         db.execute("ALTER TABLE jobs ADD COLUMN stage TEXT")
+    # Çoklu oturum: işi hangi Colab oturumunun çalıştırdığı ve paralel üretimde grup kimliği.
+    if "session" not in job_cols:
+        db.execute("ALTER TABLE jobs ADD COLUMN session TEXT")
+    if "group_id" not in job_cols:
+        db.execute("ALTER TABLE jobs ADD COLUMN group_id TEXT")
+    db.execute("CREATE INDEX IF NOT EXISTS jobs_session ON jobs(session, status)")
     # Servis yeniden başladıysa çalışan iş yarıda kalmıştır; sıradakiler yeniden kuyruğa girer.
     db.execute("UPDATE jobs SET status='error', error='Servis yeniden başladı' WHERE status='running'")
     db.execute("UPDATE jobs SET status='queued' WHERE status='waiting_gpu'")
@@ -325,15 +403,17 @@ def list_media(limit=30, ext=None):
 
 # --- işler ---
 
-def create_job(thread_id, mode, kind, prompt, params, inputs):
+def create_job(thread_id, mode, kind, prompt, params, inputs, session=None, group_id=None):
     for name in inputs:
         path = (MEDIA_DIR / name).resolve()
         if not path.is_relative_to(MEDIA_DIR.resolve()) or not path.is_file():
             raise ValueError(f"yüklenen dosya bulunamadı: {name}")
     jid = uuid.uuid4().hex
     db.execute(
-        "INSERT INTO jobs (id, thread_id, mode, kind, prompt, params, inputs, status, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-        (jid, thread_id, mode, kind, prompt, json.dumps(params), json.dumps(inputs), "queued", time.time()),
+        "INSERT INTO jobs (id, thread_id, mode, kind, prompt, params, inputs, status, created_at, session, group_id)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        (jid, thread_id, mode, kind, prompt, json.dumps(params), json.dumps(inputs), "queued", time.time(),
+         session, group_id),
     )
     db.commit()
     job = get_job(jid)
@@ -365,16 +445,54 @@ def _set_status(jid, status, **fields):
     return cur.rowcount == 1
 
 
-def has_pending_jobs():
-    return db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','waiting_gpu','running') LIMIT 1").fetchone() is not None
+def pending_count(session):
+    """Oturuma atanmış bekleyen/çalışan iş sayısı: yönlendirmede yük göstergesi.
+
+    Oturumu henüz yazılmamış işler (yönlendirilmekte olan iş dahil) hiçbir oturumun yükü sayılmaz:
+    varsayılan oturuma sayılsalardı varsayılan oturum dolu görünür, işler ek oturumlara yığılırdı.
+    Dağıtıcı oturumu iş kapıya girmeden yazar."""
+    name = session if isinstance(session, str) else session.name
+    row = db.execute(
+        "SELECT COUNT(*) AS c FROM jobs WHERE status IN ('queued','waiting_gpu','running') AND session=?",
+        (name,),
+    ).fetchone()
+    return row["c"]
 
 
-def cancel_pending():
+def has_pending_jobs(session=None):
+    """Bekleyen/çalışan iş var mı? Oturum verilirse yalnız o oturumun işleri sayılır (boşta kapatma
+    ve "açılışı iptal et" kararı oturum başına verilir). Oturum verilmeyen işler varsayılan oturuma
+    aittir: tek oturumlu kurulumlarda davranış değişmez."""
+    if session is None:
+        row = db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','waiting_gpu','running') LIMIT 1").fetchone()
+        return row is not None
+    name = session if isinstance(session, str) else session.name
+    row = db.execute(
+        "SELECT 1 FROM jobs WHERE status IN ('queued','waiting_gpu','running') "
+        "AND (session=? OR (session IS NULL AND ?=?)) LIMIT 1",
+        (name, name, runtime.SESSION),
+    ).fetchone()
+    return row is not None
+
+
+def cancel_pending(session=None):
     """GPU elle kapatılınca bekleyen tüm işler iptal olur: yoksa sıradaki iş GPU'yu birkaç saniye
     sonra yeniden açar ve kapatma boşa gider. Çalışan iş ComfyUI'yle birlikte kesilir; bağlantı
-    hatası yerine "İptal edildi" yazılsın diye işaretlenir. İptal edilen işlerin kimliklerini döndürür."""
+    hatası yerine "İptal edildi" yazılsın diye işaretlenir. İptal edilen işlerin kimliklerini döndürür.
+
+    `session` verilirse yalnız o oturumun işleri iptal edilir: bir oturumu kapatmak başka oturumun
+    sırasını boşaltmaz."""
+    if session is None:
+        rows = db.execute("SELECT id, status FROM jobs WHERE status IN ('queued','waiting_gpu','running')").fetchall()
+    else:
+        name = session if isinstance(session, str) else session.name
+        rows = db.execute(
+            "SELECT id, status FROM jobs WHERE status IN ('queued','waiting_gpu','running') "
+            "AND (session=? OR (session IS NULL AND ?=?))",
+            (name, name, runtime.SESSION),
+        ).fetchall()
     ids = []
-    for r in db.execute("SELECT id, status FROM jobs WHERE status IN ('queued','waiting_gpu','running')").fetchall():
+    for r in rows:
         cancelled.add(r["id"])
         if r["status"] != "running":
             _set_status(r["id"], "error", error=CANCELLED, finished_at=time.time())
@@ -385,9 +503,10 @@ def cancel_pending():
 MODEL_LABELS = {"image": "Görsel", "enhance": "İstem geliştirme", "video": "Video", "music": "Müzik", "speech": "Ses", "transcribe": "Yazıya dökme", "model3d": "3D"}
 
 
-async def interrupt_comfy():
+async def interrupt_comfy(session=None):
+    rt = _session(session)
     async with ClientSession(timeout=ClientTimeout(total=10)) as http:
-        async with http.post(f"{runtime.COMFY_URL}/interrupt") as r:
+        async with http.post(f"{rt.comfy_url}/interrupt") as r:
             r.raise_for_status()
 
 
@@ -399,7 +518,10 @@ async def cancel_job(jid):
         _set_status(jid, "error", error=CANCELLED, finished_at=time.time())
     elif job["status"] == "running":
         cancelled.add(jid)
-        await interrupt_comfy()
+        # İş hangi oturumda çalışıyorsa kesme ona gider: başka oturumun grafiği durdurulmaz.
+        rt = session_for(job)
+        if rt is not None:  # oturumu kapatıldıysa kesilecek ComfyUI kalmadı
+            await interrupt_comfy(rt)
     return get_job(jid)
 
 
@@ -420,74 +542,141 @@ def _waiting_models(jid, kind, st):
     live[jid] = lambda: {"progress": st["fraction"], "eta": st["eta"], "stage_seconds": None, "stage_expected": None, "loading": False}
 
 
+_tasks = set()  # süren iş görevleri (referans tutulmazsa çöp toplayıcı iptal edebilir)
+_session_gates = {}  # (oturum adı, olay döngüsü) -> Semaphore(1)
+
+
+def _gate(rt):
+    """Oturum başına tek iş: bir ComfyUI tek grafiği verimli çalıştırır.
+
+    Kilit döngü başına kurulur: testler her testte yeni bir olay döngüsü açıyor ve asyncio
+    nesneleri ilk kullanıldıkları döngüye bağlanıyor."""
+    loop = asyncio.get_running_loop()
+    key = (rt.name, id(loop))
+    gate = _session_gates.get(key)
+    if gate is None:
+        gate = _session_gates[key] = asyncio.Semaphore(1)
+    return gate
+
+
 async def worker():
-    """Kuyruk işleyicisi. Tek bir işin ya da veritabanının beklenmedik hatası döngüyü durdurmaz:
-    döngü durursa yeni işler hiç alınmaz, GPU açılışı da kuyruktaki işi bulamaz (servis yeniden
-    başlayana kadar stüdyo ölü kalır)."""
+    """Kuyruk dağıtıcısı: işi alır, oturumunu belirler ve **kendi oturumunda** çalıştırır.
+
+    Tek bir işin ya da veritabanının beklenmedik hatası döngüyü durdurmaz: döngü durursa yeni işler
+    hiç alınmaz, GPU açılışı da kuyruktaki işi bulamaz (servis yeniden başlayana kadar stüdyo ölü
+    kalır). İşler görev olarak açıldığı için farklı oturumlar birbirini beklemez; aynı oturumun
+    işleri kapısında (semaphore) sıraya girer."""
     while True:
         _, _, jid = await queue.get()
+        task = asyncio.create_task(_dispatch(jid))
+        _tasks.add(task)
+        task.add_done_callback(_tasks.discard)
+
+
+async def _dispatch(jid):
+    """İşi oturumunun kapısından geçirip çalıştırır; hata durumunda işi kapatır."""
+    rt = None
+    try:
+        job = get_job(jid)
+        if job is None or job["status"] != "queued":  # iptal edilmiş ya da silinmiş
+            return
+        rt = session_for(job)
+        if rt is None:
+            _set_status(jid, "error", error=SESSION_CLOSED, finished_at=time.time())
+            return
+        if job.get("session") != rt.name:
+            # Yönlendirme sonucu kapıya girmeden yazılır: kapıda bekleyen iş de oturumunun yükü
+            # sayılsın (yazılmazsa varsayılan oturumun yükü sayılıyor, sonraki işler hep aynı ek
+            # oturuma yığılıyordu).
+            _update(jid, session=rt.name)
+        async with _gate(rt):
+            # Varsayılan oturumda eski imza (tek argüman) korunur: testler `_work`'ü yamalıyor.
+            await (_work(jid) if rt is runtime.DEFAULT else _work(jid, rt))
+    except Exception as e:  # işin kendi hataları _work içinde yakalanır; buraya kalan kök neden
+        runtime.log(f"iş {jid[:8]}: beklenmedik hata: {runtime.short_error(e, 300)}")
         try:
-            await _work(jid)
-        except Exception as e:  # işin kendi hataları _work içinde yakalanır; buraya kalan kök neden
-            runtime.log(f"iş {jid[:8]}: beklenmedik hata: {runtime.short_error(e, 300)}")
-            try:
-                _set_status(jid, "error", error=runtime.short_error(e), finished_at=time.time())
-            except Exception as write_error:
-                runtime.log(f"iş {jid[:8]}: hata durumu yazılamadı: {runtime.short_error(write_error, 200)}")
-        finally:
-            try:
-                if get_job(jid) is None:  # sohbet iş sürerken silindi: indirilen çıktı sahipsiz kalmasın
-                    for f in MEDIA_DIR.glob(f"{jid}_*"):
-                        f.unlink()
-            except Exception as e:
-                runtime.log(f"iş {jid[:8]}: sahipsiz çıktı temizlenemedi: {runtime.short_error(e, 200)}")
-            cancelled.discard(jid)
-            live.pop(jid, None)
-            runtime.touch()
+            _set_status(jid, "error", error=runtime.short_error(e), finished_at=time.time())
+        except Exception as write_error:
+            runtime.log(f"iş {jid[:8]}: hata durumu yazılamadı: {runtime.short_error(write_error, 200)}")
+    finally:
+        try:
+            if get_job(jid) is None:  # sohbet iş sürerken silindi: indirilen çıktı sahipsiz kalmasın
+                for f in MEDIA_DIR.glob(f"{jid}_*"):
+                    f.unlink()
+        except Exception as e:
+            runtime.log(f"iş {jid[:8]}: sahipsiz çıktı temizlenemedi: {runtime.short_error(e, 200)}")
+        cancelled.discard(jid)
+        live.pop(jid, None)
+        if rt is not None:
+            _touch_for(rt)  # iş bitti: boşta sayacı sıfırlanır (GPU hemen kapanmasın)
 
 
-async def _work(jid):
+async def _work(jid, session=None):
+    """İşi verilen oturumda çalıştırır. Oturum verilmezse işin kayıtlı oturumu (yönlendirme
+    sonucu), o da yoksa varsayılan oturum kullanılır."""
     job = get_job(jid)
     if job is None or job["status"] != "queued":  # iptal edilmiş ya da silinmiş
         cancelled.discard(jid)
         return
+    rt = _session(session) if session is not None else session_for(job)
+    if rt is None or _session_gone(rt):
+        _set_status(jid, "error", error=SESSION_CLOSED, finished_at=time.time())
+        return
+    if job.get("session") != rt.name:  # iş hangi oturumda çalıştığını taşır
+        _update(jid, session=rt.name)
+    packs = model_packs(job)
     try:
-        if not runtime.ready.is_set():
+        if not rt.ready.is_set():
             _set_status(jid, "waiting_gpu")
             # Önceki bir kapanış sürüyorsa bitmesi beklenir, sonra GPU bir kez açılır.
             started = False
-            while not runtime.ready.is_set():
+            while not rt.ready.is_set():
                 if jid in cancelled:
-                    # Açılışı bu iş tetiklediyse ve başka iş yoksa GPU boşuna açılıp 15 dk boşta beklemesin.
-                    if runtime.state["phase"] == "starting" and not has_pending_jobs():
-                        await runtime.stop("iş iptal edildi, GPU kapatılıyor")
+                    # Açılışı bu iş tetiklediyse ve o oturumda başka iş yoksa GPU boşuna açılıp 15 dk
+                    # boşta beklemesin (başka oturumun işi bu oturumu açık tutmaz).
+                    if rt.state["phase"] == "starting" and not has_pending_jobs(rt):
+                        await _stop_for(rt, "iş iptal edildi, GPU kapatılıyor")
                     raise RuntimeError(CANCELLED)
-                if runtime.state["phase"] in ("off", "error"):
+                if _session_gone(rt):  # beklerken oturum kapatıldı: yeniden açılmaz
+                    raise RuntimeError(SESSION_CLOSED)
+                if rt.state["phase"] in ("off", "error"):
                     if started:
-                        raise RuntimeError(f"GPU açılamadı: {runtime.state['detail']}")
-                    runtime.start(job["kind"] if job["kind"] in runtime.PACKS else None)  # işin modelleri ilk iner; paketsiz tür (yazıya dökme) hiçbirini beklemez
+                        raise RuntimeError(f"GPU açılamadı: {rt.state['detail']}")
+                    _start_for(rt, packs[0] if packs else None)  # işin modelleri ilk iner; paketsiz tür (yazıya dökme) hiçbirini beklemez
                     started = True
+                progress = rt.startup_progress()
+                if progress:  # GPU açılışı sürüyor: iş satırı ~2,5 dk boş ve %0 kalmasın
+                    _update(jid, stage=f"GPU hazırlanıyor · {progress['steps'][progress['step']]}",
+                            progress=progress["progress"])
+                    live[jid] = lambda p=progress: {
+                        "progress": p["progress"], "eta": p["remaining_seconds"],
+                        "stage_seconds": p["step_elapsed_seconds"], "stage_expected": None, "loading": False,
+                    }
                 await asyncio.sleep(2)
         # GPU hazır olduğu anda gelen iptal bekleme döngüsünde görülmeyebilir: geçiş reddedilirse iş
         # zaten son durumdadır (iptal edildi ya da silindi), çalıştırılmaz.
         if not _set_status(jid, "running"):
             return
-        runtime.touch()
-        if job["kind"] in runtime.PACKS and job["kind"] not in runtime.local_modes:
-            def on_wait(st):
+        _touch_for(rt)
+        for pack in packs:
+            if pack in rt.local_modes:
+                continue
+
+            def on_wait(st, pack=pack):
                 if jid in cancelled:  # paket arka planda inmeye devam eder; yalnızca iş bırakılır
                     raise RuntimeError(CANCELLED)
-                _waiting_models(jid, job["kind"], st)
-            await runtime.ensure_models(job["kind"], on_wait)
-        if runtime.warming:
-            await interrupt_comfy()
-            while runtime.warming:
+                _waiting_models(jid, pack, st)
+
+            await _ensure_models_for(rt, pack, on_wait)
+        if rt.warming:
+            await (interrupt_comfy() if rt is runtime.DEFAULT else interrupt_comfy(rt))
+            while rt.warming:
                 await asyncio.sleep(0.1)
         try:
-            await asyncio.wait_for(_run(job), JOB_TIMEOUT)
+            await asyncio.wait_for(_run(job) if rt is runtime.DEFAULT else _run(job, rt), JOB_TIMEOUT)
         except TimeoutError:
             # ComfyUI işi kendisi sürdürür; kesilmezse sonraki işler GPU'yu boş bulamaz.
-            await interrupt_comfy()
+            await (interrupt_comfy() if rt is runtime.DEFAULT else interrupt_comfy(rt))
             raise RuntimeError(f"Süre aşımı: iş {JOB_TIMEOUT // 60} dakikada bitmedi, durduruldu") from None
         if jid in cancelled:  # iptal, ComfyUI'ye iş gitmeden (model hazırlığı, yükleme) geldiyse
             raise RuntimeError(CANCELLED)
@@ -497,40 +686,46 @@ async def _work(jid):
         _set_status(jid, "error", error=error, finished_at=time.time())
 
 
-async def _run(job):
+async def _run(job, session=None):
+    rt = _session(session)
     async with ClientSession(timeout=ClientTimeout(total=600)) as http:
-        images = [await _upload(http, name) for name in job["inputs"]]
+        images = [await _in(rt, _upload, http, name) for name in job["inputs"]]
         p = job["params"]
         if job["kind"] == "transcribe":
-            outputs = await _execute(http, job, [workflows.transcribe(images[0], p["language"])])
+            outputs = await _in(rt, _execute, http, job, [workflows.transcribe(images[0], p["language"])])
             _update(job["id"], text=outputs[0][workflows.TEXT_NODE]["text"][0].strip())
             return
         if job["kind"] == "enhance":
             wf = workflows.enhance_prompt(job["prompt"], images, random.randrange(2**32))
-            outputs = await _execute(http, job, [wf])
+            outputs = await _in(rt, _execute, http, job, [wf])
             _update(job["id"], text=outputs[0][workflows.TEXT_NODE]["text"][0].strip())
             return
         seed = p["seed"] if p["seed"] is not None else random.randrange(2**32)
         if job["kind"] == "video":
-            outputs = await _execute(http, job, [workflows.video_generate({**p, "prompt": job["prompt"], "seed": seed}, images)])
-            saved = [await _download(http, job["id"], f, i) for i, f in enumerate(outputs[0][workflows.SAVE_NODE]["images"])]
+            outputs = await _in(rt, _execute, http, job,
+                                [workflows.video_generate({**p, "prompt": job["prompt"], "seed": seed}, images)])
+            saved = [await _in(rt, _download, http, job["id"], f, i)
+                     for i, f in enumerate(outputs[0][workflows.SAVE_NODE]["images"])]
             _update(job["id"], outputs=json.dumps(saved), params=json.dumps({**p, "seed": seed}))
             return
         if job["kind"] == "speech":
             wf = workflows.speech_generate({**p, "text": job["prompt"], "seed": seed}, images[0] if images else None)
-            outputs = await _execute(http, job, [wf])
-            saved = [await _download(http, job["id"], f, i) for i, f in enumerate(outputs[0][workflows.SAVE_NODE]["audio"])]
+            outputs = await _in(rt, _execute, http, job, [wf])
+            saved = [await _in(rt, _download, http, job["id"], f, i)
+                     for i, f in enumerate(outputs[0][workflows.SAVE_NODE]["audio"])]
             _update(job["id"], outputs=json.dumps(saved), params=json.dumps({**p, "seed": seed}))
             return
         if job["kind"] == "model3d":
-            outputs = await _execute(http, job, [workflows.model3d_generate({**p, "seed": seed}, images[0])])
-            saved = [await _download(http, job["id"], f, i) for i, f in enumerate(outputs[0][workflows.SAVE_NODE]["3d"])]
+            outputs = await _in(rt, _execute, http, job, [workflows.model3d_generate({**p, "seed": seed}, images[0])])
+            saved = [await _in(rt, _download, http, job["id"], f, i)
+                     for i, f in enumerate(outputs[0][workflows.SAVE_NODE]["3d"])]
             _update(job["id"], outputs=json.dumps(saved), params=json.dumps({**p, "seed": seed}))
             return
         if job["kind"] == "music":
             wf = workflows.music_generate({**p, "style": job["prompt"], "seed": seed})
-            outputs = await _execute(http, job, [wf])
-            saved = [await _download(http, job["id"], f, i) for i, f in enumerate(outputs[0][workflows.SAVE_NODE]["audio"])]
+            outputs = await _in(rt, _execute, http, job, [wf])
+            saved = [await _in(rt, _download, http, job["id"], f, i)
+                     for i, f in enumerate(outputs[0][workflows.SAVE_NODE]["audio"])]
             _update(job["id"], outputs=json.dumps(saved), params=json.dumps({**p, "seed": seed}))
             return
         if job["kind"] != "image":
@@ -539,26 +734,26 @@ async def _run(job):
         for i in range(p["count"]):
             gp = {**p, "prompt": job["prompt"], "seed": seed + i}
             graphs.append(workflows.image_edit(gp, images) if images else workflows.image_generate(gp))
-        outputs = await _execute(http, job, graphs)
+        outputs = await _in(rt, _execute, http, job, graphs)
         saved = []
         for out in outputs:
             for img in out[workflows.SAVE_NODE]["images"]:
-                saved.append(await _download(http, job["id"], img, len(saved)))
+                saved.append(await _in(rt, _download, http, job["id"], img, len(saved)))
         _update(job["id"], outputs=json.dumps(saved), params=json.dumps({**p, "seed": seed}))
 
 
-async def _upload(http, name):
+async def _upload(http, name, session=None):
     form = FormData()
     form.add_field("image", (MEDIA_DIR / name).read_bytes(), filename=Path(name).name)
     form.add_field("overwrite", "true")
-    async with http.post(f"{runtime.COMFY_URL}/upload/image", data=form) as r:
+    async with http.post(f"{_session(session).comfy_url}/upload/image", data=form) as r:
         r.raise_for_status()
         return (await r.json())["name"]
 
 
-async def _download(http, jid, img, index):
+async def _download(http, jid, img, index, session=None):
     params = {"filename": img["filename"], "subfolder": img["subfolder"], "type": img["type"]}
-    async with http.get(f"{runtime.COMFY_URL}/view", params=params) as r:
+    async with http.get(f"{_session(session).comfy_url}/view", params=params) as r:
         r.raise_for_status()
         data = await r.read()
     name = f"{jid}_{index}{Path(img['filename']).suffix}"
@@ -566,20 +761,21 @@ async def _download(http, jid, img, index):
     return name
 
 
-async def _execute(http, job, graphs):
+async def _execute(http, job, graphs, session=None):
     """Grafikleri sırayla çalıştırır; ilerlemeyi ComfyUI websocket'inden okur. Kalan süre önceki
     işlerden öğrenilen düğüm sürelerinden hesaplanır (tracker.py); iş başarıyla biterse bu işin
     ölçümleri de öğrenilir."""
+    rt = _session(session)
     jid, results = job["id"], []
-    cold = job["kind"] not in runtime.warm
+    cold = job["kind"] not in rt.warm
     t = tracker.Tracker(timings(), job, graphs, cold)
     live[jid] = t.snapshot
     loaded = False  # ilk adım bitince model GPU'dadır; sonraki örnekleyiciler yükleme beklemez
-    async with http.ws_connect(f"{runtime.COMFY_URL}/ws?clientId={CLIENT_ID}") as ws:
+    async with http.ws_connect(f"{rt.comfy_url}/ws?clientId={CLIENT_ID}") as ws:
         for gi, graph in enumerate(graphs):
             if jid in cancelled:  # iptal iki grafik arasında geldiyse kesilecek bir iş yoktu
                 raise RuntimeError(CANCELLED)
-            async with http.post(f"{runtime.COMFY_URL}/prompt", json={"prompt": graph, "client_id": CLIENT_ID}) as r:
+            async with http.post(f"{rt.comfy_url}/prompt", json={"prompt": graph, "client_id": CLIENT_ID}) as r:
                 body = await r.json()
                 if r.status != 200:
                     raise RuntimeError(f"ComfyUI işi reddetti: {json.dumps(body)[:400]}")
@@ -626,11 +822,11 @@ async def _execute(http, job, graphs):
                 # Bağlantı bitiş olayı gelmeden kapandı (ComfyUI çöktü ya da SSH yönlendirmesi koptu);
                 # history'de bu işin kaydı olmaz.
                 raise RuntimeError("ComfyUI bağlantısı koptu")
-            async with http.get(f"{runtime.COMFY_URL}/history/{pid}") as r:
+            async with http.get(f"{rt.comfy_url}/history/{pid}") as r:
                 results.append((await r.json())[pid]["outputs"])
     t.finish()
     learn_timings(t.learned())
-    runtime.warm.add(job["kind"])
+    rt.warm.add(job["kind"])
     return results
 
 

@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import type { Job, Preset, RuntimeState, Thread } from "../src/api";
+import type { Job, Preset, RuntimeState, SessionInfo, SessionPlan, Thread } from "../src/api";
 
 // 1x1 PNG
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
@@ -102,6 +102,8 @@ export class MockApi {
   onJobCreate: (j: Job) => Job = (j) => j;
   /** Arayüz dili: testlerin çoğu Türkçe metinleri denetler; null = hiç seçilmemiş (varsayılan İngilizce). */
   lang: "tr" | "en" | null = "tr";
+  /** Oturum planı: varsayılan `asked: true`, böylece "kaç oturum?" sorusu eski testleri etkilemez. */
+  plan: SessionPlan = { max: 5, default: 3, plan: 3, active: 1, asked: true, keep_warm: false };
   models = {
     image: { label: "Noct-Q V4", description: { en: "Qwen-Image 2.1 based fine-tune.", tr: "Qwen-Image 2.1 tabanlı ince ayar." } },
     video: { label: "MiniMax H3 (w6a8)", description: { en: "Generates video and audio together.", tr: "Görüntü ve sesi birlikte üretir." } },
@@ -183,6 +185,42 @@ export class MockApi {
         return json(this.rt.phase === "ready" ? [m(1), m(2), m(3)] : []);
       }
       if (path === "/api/runtime/log") return json({ lines: this.logLines });
+      // --- çoklu oturum (docs/multi-session.md) ---
+      const limits = (sessions: SessionInfo[]) => ({ max: this.plan.max, default: this.plan.default, plan: this.plan.plan, active: sessions.length });
+      if (path === "/api/sessions/plan") {
+        if (method === "PUT") {
+          const b = body as { plan?: number; keep_warm?: boolean };
+          // Cevap yazıldığında `asked` işaretlenir: soru ikinci açılışta tekrar sorulmaz.
+          this.plan = { ...this.plan, plan: b.plan ?? this.plan.plan, keep_warm: b.keep_warm ?? this.plan.keep_warm, asked: true };
+        }
+        return json(this.plan);
+      }
+      if (path === "/api/sessions" && method === "GET") {
+        const sessions = this.rt.sessions ?? [];
+        return json({ sessions, limits: limits(sessions) });
+      }
+      if (path === "/api/sessions" && method === "POST") {
+        const sessions = [...(this.rt.sessions ?? [])];
+        const name = `studio-${sessions.length + 1}`;
+        const added: SessionInfo = {
+          name, slot: sessions.length, phase: "starting", detail: null, port: 8200 + 10 * (sessions.length - 1),
+          idle_seconds: null, idle_minutes: 15, auto_shutdown: true, session_seconds: 0, session_spent: 0, packs: {},
+        };
+        sessions.push(added);
+        this.rt = { ...this.rt, sessions, limits: limits(sessions) };
+        return json({ started: [name], sessions, limits: limits(sessions) });
+      }
+      const stopSession = path.match(/^\/api\/sessions\/([^/]+)\/stop$/);
+      if (stopSession && method === "POST") {
+        const sessions = (this.rt.sessions ?? []).filter((s) => s.name !== decodeURIComponent(stopSession[1]));
+        this.rt = { ...this.rt, sessions, limits: limits(sessions) };
+        return json({ sessions, limits: limits(sessions) });
+      }
+      if (path === "/api/sessions/stop-all" && method === "POST") {
+        const sessions = (this.rt.sessions ?? []).filter((s) => s.slot === 0);
+        this.rt = { ...this.rt, sessions, limits: limits(sessions) };
+        return json({ sessions, limits: limits(sessions) });
+      }
       if (path === "/api/threads" && method === "GET") {
         const mode = url.searchParams.get("mode");
         return json(Object.values(this.threads).filter((t) => t.mode === mode).map(({ jobs: _j, ...t }) => t));
